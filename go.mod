@@ -1,4 +1,4 @@
-module hyperdirectory
+module github.com/fluffelpuff/HyperDirectory
 
 go 1.20
 

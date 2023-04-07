@@ -3,11 +3,12 @@ package main
 import (
 	"crypto/x509"
 	"fmt"
-	db "hyperdirectory/database"
-	restapi "hyperdirectory/restapi"
 	"log"
 	"os"
 	"time"
+
+	db "github.com/fluffelpuff/HyperDirectory/database"
+	restapi "github.com/fluffelpuff/HyperDirectory/restapi"
 )
 
 func main() {

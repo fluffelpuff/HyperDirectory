@@ -3,10 +3,11 @@ package database
 import (
 	"database/sql"
 	"fmt"
-	"hyperdirectory/base"
 	"time"
 
-	hdsha3 "hyperdirectory/crypto/sha3"
+	"github.com/fluffelpuff/HyperDirectory/base"
+
+	hdsha3 "github.com/fluffelpuff/HyperDirectory/crypto/sha3"
 )
 
 /*

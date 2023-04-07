@@ -1,8 +1,9 @@
 package restapi
 
 import (
-	db "hyperdirectory/database"
 	"time"
+
+	db "github.com/fluffelpuff/HyperDirectory/database"
 )
 
 type Session struct {

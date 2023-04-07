@@ -2,10 +2,11 @@ package restapi
 
 import (
 	"fmt"
-	"hyperdirectory/base"
-	db "hyperdirectory/database"
 	"net/http"
 	"strings"
+
+	"github.com/fluffelpuff/HyperDirectory/base"
+	db "github.com/fluffelpuff/HyperDirectory/database"
 
 	"github.com/gorilla/rpc/v2/json2"
 )

@@ -6,12 +6,13 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"fmt"
-	"hyperdirectory/base"
-	db "hyperdirectory/database"
 	"log"
 	"net"
 	"net/http"
 	"strconv"
+
+	"github.com/fluffelpuff/HyperDirectory/base"
+	db "github.com/fluffelpuff/HyperDirectory/database"
 
 	"github.com/divan/gorilla-xmlrpc/xml"
 	"github.com/gorilla/mux"

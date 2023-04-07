@@ -1,7 +1,7 @@
 package base
 
 import (
-	hcrypto "hyperdirectory/crypto"
+	hcrypto "github.com/fluffelpuff/HyperDirectory/crypto"
 )
 
 type CreateNewUserNoneRoot struct {
