@@ -268,6 +268,8 @@ func (obj *Database) GetAllMetaUserGroupsByDirectoryApiUser(filter_mode base.Get
 		return nil, fmt.Errorf("GetAllUserGroupsByDirectoryApiUser: internal error")
 	}
 
+	// Die Verfügbaren und Aktiven Gruppen werden abgerufen
+
 	obj.lock.Unlock()
 
 	// Die
