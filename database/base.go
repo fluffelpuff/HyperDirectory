@@ -69,6 +69,7 @@ CREATE TABLE "user_groups" (
 	"gid"	INTEGER UNIQUE,
 	"name"	TEXT,
 	"active"	INTEGER,
+	"fqdn_name"	TEXT,
 	"description"	TEXT,
 	"created_by_service_id_user"	INTEGER,
 	"created_by_request_id"	INTEGER,
@@ -219,11 +220,29 @@ CREATE TABLE "user_groups_directory_services_accesses" (
 	"augidsid"	INTEGER,
 	"directory_service_id"	INTEGER,
 	"created_at"	INTEGER,
+	"active"	INTEGER,
 	"user_group_id"	INTEGER,
 	"created_by_service_id_user"	INTEGER,
 	"created_by_request_id"	INTEGER,
 	"created_by_user_id"	INTEGER,
+	"directory_service_user_id"	INTEGER,
 	PRIMARY KEY("augidsid" AUTOINCREMENT)
+);
+`
+
+// Erstellt die Tabelle für die
+var sql_user_groups_directory_service_api_user_premissions_table = `
+CREATE TABLE "user_groups_directory_service_api_user_premissions" (
+	"ugdsaupid"	INTEGER,
+	"directory_service_user_id"	INTEGER,
+	"set_group_membership_premission"	INTEGER,
+	"active"	INTEGER,
+	"created_at"	INTEGER,
+	"user_group_id"	INTEGER,
+	"created_by_service_id_user"	INTEGER,
+	"created_by_request_id"	INTEGER,
+	"created_by_user_id"	INTEGER,
+	PRIMARY KEY("ugdsaupid" AUTOINCREMENT)
 );
 `
 
@@ -253,7 +272,8 @@ func CreateNewSQLiteBasedDatabase(file_path string, local_priv_key *string) (*Da
 	email_addresses, registration_processes, directory_service_api_users := false, false, false
 	login_creds, users, user_groups, user_group_member, first_names := false, false, false, false, false
 	key_pairs, last_names, directory_services_api_user_requests_start := false, false, false
-	directory_service_api_user_permissions, requests := false, false
+	directory_service_api_user_permissions, requests, user_groups_directory_services_accesses := false, false, false
+	user_groups_directory_service_api_user_premissions := false
 	for response.Next() {
 		// Der Name wird geprüft
 		err = response.Scan(&name)
@@ -288,6 +308,10 @@ func CreateNewSQLiteBasedDatabase(file_path string, local_priv_key *string) (*Da
 			directory_service_api_user_permissions = true
 		} else if name == "request_starts" {
 			requests = true
+		} else if name == "user_groups_directory_services_accesses" {
+			user_groups_directory_services_accesses = true
+		} else if name == "user_groups_directory_service_api_user_premissions" {
+			user_groups_directory_service_api_user_premissions = true
 		}
 	}
 
@@ -411,6 +435,24 @@ func CreateNewSQLiteBasedDatabase(file_path string, local_priv_key *string) (*Da
 			return nil, fmt.Errorf("CreateNewSQLiteBasedDatabase: " + err.Error())
 		}
 		fmt.Println("Requests table created")
+	}
+
+	// Sollte keine Directory Service API-User Acsess Tabelle vorhanden sein, wird diese erstellt
+	if !user_groups_directory_services_accesses {
+		_, err = db.Exec(sql_directory_services_user_groups_access_table)
+		if err != nil {
+			return nil, fmt.Errorf("CreateNewSQLiteBasedDatabase: " + err.Error())
+		}
+		fmt.Println("User Groups Directory Services Accesses table created")
+	}
+
+	// Sollte keine User Groups Directory Service Api User Premissions Tabelle vorhanden sein, wird diese erstellt
+	if !user_groups_directory_service_api_user_premissions {
+		_, err = db.Exec(sql_user_groups_directory_service_api_user_premissions_table)
+		if err != nil {
+			return nil, fmt.Errorf("CreateNewSQLiteBasedDatabase: " + err.Error())
+		}
+		fmt.Println("User Groups Directory Service Api User Premissions table created")
 	}
 
 	// Das Datenbank Objekt wird erzeugt

@@ -223,10 +223,11 @@ func (t *User) CreateNewEMailBasedNoneUserRoot(r *http.Request, args *base.Creat
 		}
 	}
 
-	// Es wird geprüft ob der Directory Service API User berechtigt ist die Gruppen zu verwenden
+	// Es wird geprüft ob der Directory Service API User berechtigt ist die Gruppen zu verwenden sofern diese gesetzt werden sollen
 	db_group_result, err := t.Database.GetAllMetaUserGroupsByDirectoryApiUser(base.FetchExplicit, directory_service_user_io, []base.PremissionFilter{base.SET_GROUP_MEMBER}, groups...)
 	if err != nil {
-
+		fmt.Println(err)
+		return err
 	}
 	fmt.Println(db_group_result)
 
@@ -253,8 +254,6 @@ func (t *User) CreateNewEMailBasedNoneUserRoot(r *http.Request, args *base.Creat
 	}
 
 	// Die Optionen werden Aktiviert
-
-	fmt.Println(groups)
 
 	// Die Daten für die Sitzung werden zurückgegeben
 	*result = *new(base.UserSession)

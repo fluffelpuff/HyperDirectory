@@ -22,7 +22,7 @@ INSERT INTO "main"."users" ("created_at", "active", "is_root", "master_pkey", "g
 
 // Dieser befehl wird verwendet um zu überprüfen ob die Services API Userdaten korrekt sind
 var SQLITE_CHECK_SERVICE_API_USER_CREDENTIALS = `
-SELECT dsauid FROM directory_service_api_users WHERE cert_fingerprint_sha256 == ? AND active == 1 LIMIT 1
+SELECT dsid, dsauid FROM directory_service_api_users WHERE cert_fingerprint_sha256 == ? AND active == 1 LIMIT 1
 `
 
 // Dieser befehl wird verwendet um alle Berechtigungen für den Aktuellen Services API User abzurufen
@@ -60,14 +60,27 @@ var SQLITE_WRITE_LASTNAME = `
 INSERT INTO "main"."last_names" ("last_name", "created_at", "active", "uid", "hight", "created_by_service_id_user", "created_by_request_id", "created_by_user_id") VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 `
 
-// Wird verwendet um anhand einer Service User API-ID den Service API User abzurufen
-var SQLITE_GET_SERVICE_USER_API_USER_BY_ID = `
+// Wird verwendet um die Gruppen abzurufen für welche der Service API-User berechtigt ist die Mitgliedschaft zu eines Benutzer hinzuzufügen
+var SQLITE_GET_SET_GROUP_PREMITTEDET_GROUPS_EXPLICIT = `
 SELECT 
-CASE WHEN COUNT(directory_service_api_users.dsid) == 1
-       THEN 'YES'
-       ELSE 'NO'
-END AS user_authed_active,
-directory_service_api_users.dsid
-FROM directory_service_api_users
-WHERE directory_service_api_users.dsid == 1 AND directory_service_api_users.active == 1
+       user_groups_directory_service_api_user_premissions.set_group_membership_premission,
+       directory_service_api_users.dsauid,
+       directory_service_api_users.dsid,
+       user_groups.name,
+       user_groups.gid
+FROM 
+	directory_service_api_users
+	JOIN user_groups_directory_services_accesses ON user_groups_directory_services_accesses.directory_service_id == directory_service_api_users.dsid
+	JOIN user_groups ON user_groups.gid == user_groups_directory_services_accesses.user_group_id
+	JOIN user_groups_directory_service_api_user_premissions ON user_groups_directory_service_api_user_premissions.user_group_id == user_groups.gid
+WHERE
+	user_groups_directory_service_api_user_premissions.set_group_membership_premission == ? AND
+	user_groups_directory_service_api_user_premissions.active == 1 AND
+	user_groups_directory_services_accesses.active == 1 AND
+	directory_service_api_users.dsauid == ? AND 
+	directory_service_api_users.active == 1 AND 
+	user_groups.name in (%s) AND
+	user_groups.active == 1
+GROUP BY
+	user_groups.gid
 `

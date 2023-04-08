@@ -5,6 +5,8 @@ import "time"
 type DirectoryServiceProcess struct {
 	AllowedFunctions []string
 	StartingTime     time.Time
+	DbServiceUserId  int64
+	DbServiceId      int64
 	DatabaseId       int64
 }
 

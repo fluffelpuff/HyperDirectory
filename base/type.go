@@ -1,5 +1,8 @@
 package base
 
+type PremissionFilter string
+type GetDataMode string
+
 type RequestMetaData struct {
 	ContentType   string
 	ContentLength string
@@ -60,5 +63,8 @@ type NewUserDbResult struct {
 	IsRoot bool
 }
 
-type PremissionFilter string
-type GetDataMode string
+type UserGroupDirectoryApiUser struct {
+	SetGroupMembershipPremission bool
+	Name                         string
+	Id                           int64
+}
