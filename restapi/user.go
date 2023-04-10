@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/fluffelpuff/HyperDirectory/base"
+	hdcrypto "github.com/fluffelpuff/HyperDirectory/crypto"
 	db "github.com/fluffelpuff/HyperDirectory/database"
 
 	"github.com/gorilla/rpc/v2/json2"
@@ -101,7 +102,7 @@ func (t *User) GetUserLoginProcessHash(r *http.Request, args *base.VerifyLoginCr
 Erzeugt eine neue Benutzersitzung
 */
 
-func (t *User) CreateNewUserSession(r *http.Request, args *base.CreateNewUserSessionRequest, result *base.UserSession) error {
+func (t *User) CreateNewUserSession(r *http.Request, args *base.CreateNewUserSessionRequest, result *base.UserSessionDbResult) error {
 	// Es wird geprüft ob das Objekt korrekt ist
 	if args == nil {
 		return fmt.Errorf("CreateNewUserSession: invalid request")
@@ -147,7 +148,7 @@ func (t *User) CreateNewUserSession(r *http.Request, args *base.CreateNewUserSes
 Wird verwendet um einen neuen Benutzer zu erstellen
 */
 
-func (t *User) CreateNewEMailBasedNoneUserRoot(r *http.Request, args *base.CreateNewUserNoneRoot, result *base.UserSession) error {
+func (t *User) CreateNewEMailBasedUserNoneRoot(r *http.Request, args *base.CreateNewUserNoneRoot, result *base.UserCreateResponse) error {
 	// Speichert den Namen der Aktuellen Funktion ab
 	function_name_var := "@create_new_user_none_root"
 
@@ -194,7 +195,7 @@ func (t *User) CreateNewEMailBasedNoneUserRoot(r *http.Request, args *base.Creat
 	}
 
 	// Es wird geprüft ob die Optionen zulässig sind
-	create_session_id, groups := false, []string{}
+	create_session_id, groups, get_service_session_id := false, []string{}, false
 	for i := range args.Options {
 		// Der String wird gesplittet
 		splited := strings.Split(args.Options[i], ":")
@@ -218,18 +219,26 @@ func (t *User) CreateNewEMailBasedNoneUserRoot(r *http.Request, args *base.Creat
 			if !create_session_id {
 				create_session_id = true
 			}
+		case "create_full_session_ids":
+			if !get_service_session_id && !create_session_id {
+				get_service_session_id = true
+				create_session_id = true
+			}
 		default:
 			return &json2.Error{Code: 401, Message: "Bad Request"}
 		}
 	}
 
 	// Es wird geprüft ob der Directory Service API User berechtigt ist die Gruppen zu verwenden sofern diese gesetzt werden sollen
-	db_group_result, err := t.Database.GetAllMetaUserGroupsByDirectoryApiUser(base.FetchExplicit, directory_service_user_io, []base.PremissionFilter{base.SET_GROUP_MEMBER}, groups...)
-	if err != nil {
-		fmt.Println(err)
-		return err
+	// Es wird eine Abfrage an die Datenabnk gestellt um zu ermittelt ob der Service API-User berechtigt ist diese Gruppen diesem Benutzer zuzuweisen
+	returned_groups := []*base.UserGroupDirectoryApiUser{}
+	if len(groups) > 0 {
+		returned_groups, err = t.Database.GetAllMetaUserGroupsByDirectoryApiUser(base.FetchExplicit, directory_service_user_io, []base.PremissionFilter{base.SET_GROUP_MEMBER}, groups...)
+		if err != nil {
+			fmt.Println(err)
+			return err
+		}
 	}
-	fmt.Println(db_group_result)
 
 	// Es wird geprüft ob es bereits einen benutzer mit der E-Mail Adresse, dem Public Masterkey oder dem Public Owner Key gibt
 	email_avail, pu_master_avail, owner_avail, err := t.Database.CheckUserDataAvailability(*args.EMailAddress, *args.PublicMasterKey, *args.CredentialsOwnerPublicKey, directory_service_user_io, *source_meta_data, false)
@@ -248,15 +257,92 @@ func (t *User) CreateNewEMailBasedNoneUserRoot(r *http.Request, args *base.Creat
 	}
 
 	// Das Benutzerkonto wird erstellt
-	_, err = t.Database.CreateNewUserNoneRoot(*args.CredentialsOwnerPublicKey, *args.EncryptedMasterKey, *args.PublicMasterKey, *args.EMailAddress, *args.EncryptedUserPassword, *args.Gender, args.FirstName, args.LastName, directory_service_user_io, *source_meta_data)
+	db_result, err := t.Database.CreateNewUserNoneRoot(*args.CredentialsOwnerPublicKey, *args.EncryptedMasterKey, *args.PublicMasterKey, *args.EMailAddress, *args.EncryptedUserPassword, *args.Gender, args.FirstName, args.LastName, returned_groups, directory_service_user_io, *source_meta_data)
 	if err != nil {
 		return fmt.Errorf("CreateNewUserNoneRoot: " + err.Error())
 	}
 
-	// Die Optionen werden Aktiviert
+	// Die Antwort wird gebaut
+	response_data := new(base.UserCreateResponse)
+	response_data.IsRoot = db_result.IsRoot
+	response_data.UserGroups = db_result.UserGroups
+
+	// Sofern für diesen Benutzer eine neue Sitzung erstellt werden soll, wird diese nun erstellt
+	if create_session_id || get_service_session_id {
+		// Es wird versucht die Sitzung in der Datenbank zu öffnen
+		ses, err := t.Database.CreateNewUserSessionByUID(db_result.UserId, directory_service_user_io, *source_meta_data, true)
+		if err != nil {
+			// Es wird festgelegt dass keine SessionIds vorhanden sind
+			response_data.HasServiceSideSessionId = false
+			response_data.HasClientSideSession = false
+
+			// Der Fehler wird an den Server übermittelt
+			response_data.Errors = append(response_data.Errors, err.Error())
+
+			// Die Daten werden zurückgegeben
+			*result = *response_data
+			return nil
+		}
+
+		// Es wird festgelegt dass eine Serverseitige Sitzung vorhanden ist
+		if get_service_session_id {
+			response_data.ServiceSideSessionId = ses.ServiceSideSessionId
+			response_data.HasServiceSideSessionId = true
+		} else {
+			response_data.HasServiceSideSessionId = false
+		}
+
+		// Es wird festgelegt dass eine Clientseitige Sitzung vorhanden ist
+		if create_session_id {
+			// Die zu verschlüsselenden Daten werden vorbereitet
+			capsluted_data := base.EncryptedSessionCapsule{ClientsidePrivKey: ses.ClientsidePrivKey, ClintsidePkey: ses.ClintsidePkey}
+			bytes_capsle, err := capsluted_data.ToBytes()
+			if err != nil {
+				// Es wird festgelegt dass keine SessionIds vorhanden sind
+				response_data.HasServiceSideSessionId = false
+				response_data.HasClientSideSession = false
+
+				// Der Fehler wird an den Server übermittelt
+				response_data.Errors = append(response_data.Errors, err.Error())
+
+				// Die Daten werden zurückgegeben
+				*result = *response_data
+				return nil
+			}
+
+			// Die Daten werden verschlüsselt
+			encrypted_str, err := hdcrypto.ECIESSecp256k1PublicKeyEncryptBytes(*args.PublicMasterKey, bytes_capsle)
+			if err != nil {
+				// Es wird festgelegt dass keine SessionIds vorhanden sind
+				response_data.HasServiceSideSessionId = false
+				response_data.HasClientSideSession = false
+
+				// Der Fehler wird an den Server übermittelt
+				response_data.Errors = append(response_data.Errors, err.Error())
+
+				// Die Daten werden zurückgegeben
+				*result = *response_data
+				return nil
+			}
+
+			// Die Daten werden vorbereitet
+			response_data.EncryptedClientData = encrypted_str
+			response_data.HasClientSideSession = true
+		} else {
+			response_data.HasClientSideSession = false
+		}
+
+		// Die Daten werden zurückgegeben
+		*result = *response_data
+		return nil
+	}
+
+	// Es wird festgelegt dass keine SessionIds vorhanden sind
+	response_data.HasServiceSideSessionId = false
+	response_data.HasClientSideSession = false
 
 	// Die Daten für die Sitzung werden zurückgegeben
-	*result = *new(base.UserSession)
+	*result = *response_data
 
 	// Der Vorgang wurde ohne fehler durchgeführt
 	return nil

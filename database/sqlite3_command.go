@@ -84,3 +84,38 @@ WHERE
 GROUP BY
 	user_groups.gid
 `
+
+// Wird verwendet um einem Benutzer mittels Service API-User einer Gruppe zuzuweisen
+var SQLITE_WRITE_USER_API_USER_SET_GROUP = `
+INSERT INTO user_group_member (gid,  uid,  active,  created_at,  service_id, created_by_service_id_user, created_by_request_id, created_by_user_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+`
+
+// Wird verwendet um den Benutzer einem Directory Service zuzuweisen
+var SQLITE_WRITE_SET_USER_MEMBERSHIP_OF_DIRECOTRY_SERVICE = `
+INSERT INTO user_directory_service_members (user_id, directory_service_id, active, created_at, created_by_service_id_user, created_by_request_id, created_by_user_id)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+`
+
+// Wird verwendet um den Benutzer dem Service zuzuweisen
+var SQLITE_CHECK_USER_SERVICES_STATE_AND_MEMBERSHIP = `
+SELECT
+	CASE WHEN  COUNT(users.uid) >= 1
+       THEN 'YES'
+       ELSE 'NO'
+       END AS user_is_active_service_member
+FROM
+users
+JOIN user_directory_service_members
+ON users.uid == user_directory_service_members.user_id
+WHERE
+	users.uid == ? AND
+	users.active == 1 AND
+	user_directory_service_members.active == 1 AND
+	user_directory_service_members.directory_service_id == ?
+`
+
+// Wird verwendet um eine User Session zu erstellen
+var SQLITE_WRITE_CREATE_USER_SESSION = `
+INSERT INTO user_sessions (user_id, service_id, device_id, created_at, client_pkey, server_privkey, session_id_chsum, service_session_id, created_by_service_id_user, created_by_request_id, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+`

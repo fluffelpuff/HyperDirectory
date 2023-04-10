@@ -81,10 +81,18 @@ CREATE TABLE "user_groups" (
 // Dieser befehl erstellt die Tabelle für die Benutzergruppen Mitgliedschaften
 var sql_create_user_group_member_table = `
 CREATE TABLE "user_group_member" (
+	"ugmid"	INTEGER,
 	"uid"	INTEGER,
 	"gid"	INTEGER,
-	"created_at"	INTEGER
-);`
+	"active"	INTEGER,
+	"service_id"	INTEGER,
+	"created_at"	INTEGER,
+	"created_by_service_id_user"	INTEGER,
+	"created_by_request_id"	INTEGER,
+	"created_by_user_id"	INTEGER,
+	PRIMARY KEY("ugmid" AUTOINCREMENT)
+);
+`
 
 // Dieser befehl erstetllt eine Tabelle für die Vornamen
 var sql_create_first_name_table_ = `
@@ -131,21 +139,6 @@ CREATE TABLE "key_pairs" (
 	"is_ssh"	TEXT,
 	"created_at"	INTEGER,
 	PRIMARY KEY("kpid" AUTOINCREMENT)
-);`
-
-// Dieser befehl wird verwendet um die Tabelle für Registrierungsvorgänge zu erstellen
-var sql_create_new_registration_process_table = `
-CREATE TABLE "registration_processes" (
-	"urpid"	INTEGER UNIQUE,
-	"emid"	INTEGER,
-	"lcid"	INTEGER,
-	"uid"	INTEGER,
-	"state"	TEXT,
-	"is_open"	INTEGER,
-	"active"	INTEGER,
-	"finally_at"	INTEGER,
-	"created_at"	INTEGER,
-	PRIMARY KEY("urpid" AUTOINCREMENT)
 );`
 
 // Dieser befehl wird verwendet um die Tabelle für die Vefügbaren Dienste zu Registrieren
@@ -246,6 +239,40 @@ CREATE TABLE "user_groups_directory_service_api_user_premissions" (
 );
 `
 
+// Erstellt die Tabelle für die Zuordnung von Benutzern zu Direcotry Services
+var sql_user_member_of_directory_service_table = `
+CREATE TABLE "user_directory_service_members" (
+	"udsmid"	INTEGER,
+	"user_id"	INTEGER,
+	"directory_service_id"	INTEGER,
+	"active"	INTEGER,
+	"created_at"	INTEGER,
+	"created_by_service_id_user"	INTEGER,
+	"created_by_request_id"	INTEGER,
+	"created_by_user_id"	INTEGER,
+	PRIMARY KEY("udsmid" AUTOINCREMENT)
+);
+`
+
+// Erstellt die Datenbank für die Nutzer Sitzungen
+var sql_create_user_session_table = `
+CREATE TABLE "user_sessions" (
+	"usid"	INTEGER,
+	"user_id"	INTEGER,
+	"service_id"	INTEGER,
+	"device_id"	INTEGER,
+	"created_at"	INTEGER,
+	"client_pkey"	TEXT,
+	"server_privkey"	INTEGER,
+	"service_session_id"	TEXT,
+	"session_id_chsum"	INTEGER UNIQUE,
+	"created_by_service_id_user"	INTEGER,
+	"created_by_request_id"	INTEGER,
+	"created_by_user_id"	INTEGER,
+	PRIMARY KEY("usid" AUTOINCREMENT)
+);
+`
+
 // Stellt das Datenbank Objekt dar
 type Database struct {
 	privKey *string
@@ -269,11 +296,11 @@ func CreateNewSQLiteBasedDatabase(file_path string, local_priv_key *string) (*Da
 
 	// Es wird geprüft ob die benötigten Tabellen vorhanden sind
 	var name string
-	email_addresses, registration_processes, directory_service_api_users := false, false, false
+	email_addresses, directory_service_api_users, user_directory_service_members := false, false, false
 	login_creds, users, user_groups, user_group_member, first_names := false, false, false, false, false
 	key_pairs, last_names, directory_services_api_user_requests_start := false, false, false
 	directory_service_api_user_permissions, requests, user_groups_directory_services_accesses := false, false, false
-	user_groups_directory_service_api_user_premissions := false
+	user_groups_directory_service_api_user_premissions, user_sessions := false, false
 	for response.Next() {
 		// Der Name wird geprüft
 		err = response.Scan(&name)
@@ -298,8 +325,6 @@ func CreateNewSQLiteBasedDatabase(file_path string, local_priv_key *string) (*Da
 			last_names = true
 		} else if name == "key_pairs" {
 			key_pairs = true
-		} else if name == "registration_processes" {
-			registration_processes = true
 		} else if name == "directory_service_api_users" {
 			directory_service_api_users = true
 		} else if name == "directory_services_api_user_requests_start" {
@@ -312,6 +337,10 @@ func CreateNewSQLiteBasedDatabase(file_path string, local_priv_key *string) (*Da
 			user_groups_directory_services_accesses = true
 		} else if name == "user_groups_directory_service_api_user_premissions" {
 			user_groups_directory_service_api_user_premissions = true
+		} else if name == "user_directory_service_members" {
+			user_directory_service_members = true
+		} else if name == "user_sessions" {
+			user_sessions = true
 		}
 	}
 
@@ -401,15 +430,6 @@ func CreateNewSQLiteBasedDatabase(file_path string, local_priv_key *string) (*Da
 		fmt.Println("Users key pairs table created")
 	}
 
-	// Sollten keine Registrierungs Tabelle vorhanden sein, so wird diese erstellt
-	if !registration_processes {
-		_, err = db.Exec(sql_create_new_registration_process_table)
-		if err != nil {
-			return nil, fmt.Errorf("CreateNewSQLiteBasedDatabase: " + err.Error())
-		}
-		fmt.Println("Registration Processes table created")
-	}
-
 	// Sollte keine Services Tabelle vorhanden sein, so wird diese erstellt
 	if !directory_services_api_user_requests_start {
 		_, err = db.Exec(sql_services_user_api_request)
@@ -453,6 +473,24 @@ func CreateNewSQLiteBasedDatabase(file_path string, local_priv_key *string) (*Da
 			return nil, fmt.Errorf("CreateNewSQLiteBasedDatabase: " + err.Error())
 		}
 		fmt.Println("User Groups Directory Service Api User Premissions table created")
+	}
+
+	// Sollte keine Sql User Member of Directory Service Tabelle vorhanden sein, wird dieser erstellt
+	if !user_directory_service_members {
+		_, err = db.Exec(sql_user_member_of_directory_service_table)
+		if err != nil {
+			return nil, fmt.Errorf("CreateNewSQLiteBasedDatabase: " + err.Error())
+		}
+		fmt.Println("Sql User Member of Directory Service table created")
+	}
+
+	// Sollte keine Session Tabelle vorhanden sein, wird diese erzeugt
+	if !user_sessions {
+		_, err = db.Exec(sql_create_user_session_table)
+		if err != nil {
+			return nil, fmt.Errorf("CreateNewSQLiteBasedDatabase: " + err.Error())
+		}
+		fmt.Println("User sessions table created")
 	}
 
 	// Das Datenbank Objekt wird erzeugt

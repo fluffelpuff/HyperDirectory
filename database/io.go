@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/fluffelpuff/HyperDirectory/base"
+	hdcrypto "github.com/fluffelpuff/HyperDirectory/crypto"
 	hdsha3 "github.com/fluffelpuff/HyperDirectory/crypto/sha3"
 )
 
@@ -227,7 +228,7 @@ func (obj *Database) CheckUserDataAvailability(email string, pkey_master string,
 /*
 Ruft alle Verfügbaren Gruppen für einen Benutzer abgerufen
 */
-func (obj *Database) GetAllMetaUserGroupsByDirectoryApiUser(filter_mode base.GetDataMode, service_data *base.DirectoryServiceProcess, filters []base.PremissionFilter, group_names ...string) ([]string, error) {
+func (obj *Database) GetAllMetaUserGroupsByDirectoryApiUser(filter_mode base.GetDataMode, service_data *base.DirectoryServiceProcess, filters []base.PremissionFilter, group_names ...string) ([]*base.UserGroupDirectoryApiUser, error) {
 	// Es wird geprüft ob das Datenbank Objekt verfügbar ist
 	if obj.db == nil {
 		return nil, fmt.Errorf("GetAllUserGroupsByDirectoryApiUser: internal db error")
@@ -239,38 +240,38 @@ func (obj *Database) GetAllMetaUserGroupsByDirectoryApiUser(filter_mode base.Get
 	}
 
 	// Die Verfügbaren und Aktiven Gruppenw welche diesem Service API User zugewiesen wurden, werden ermittelt
-	var filter_set_group_member *bool
+	var filter_set_group_member bool
 	for i := range filters {
 		switch filters[i] {
 		case base.SET_GROUP_MEMBER:
 			n_bool := true
-			filter_set_group_member = &n_bool
+			filter_set_group_member = n_bool
 		default:
 			obj.lock.Unlock()
 			return nil, fmt.Errorf("GetAllUserGroupsByDirectoryApiUser: unsportted filter")
 		}
 	}
 
-	// Der Platzhalter befehlsstring wird erstellt
-	placeholders := make([]string, len(group_names))
-	for i := range group_names {
-		placeholders[i] = "?"
-	}
-
-	// Die Verfügbaren Gruppen werden aufgearbeitet
-	set_group_membership_interface := make([]interface{}, len(group_names))
-	for i, v := range group_names {
-		set_group_membership_interface[i] = v
-	}
-
-	// Der Threadlock wird verwendet
-	obj.lock.Lock()
-
 	// Es wwerden alle SET_GROUP berechtigten Gruppen abgerufen:
 	//		- Der Dienst ist berechtigt diese Gruppe zu verwenden
 	//		- Der Dienste API-User muss berechtigt sein Benutzer zu dieser Gruppe zuzuordnen
 	extracted_group_from_datas := []*base.UserGroupDirectoryApiUser{}
-	if len(set_group_membership_interface) > 0 && filter_mode == base.FetchExplicit && *filter_set_group_member {
+	if filter_mode == base.FetchExplicit && filter_set_group_member {
+		// Der Platzhalter befehlsstring wird erstellt
+		placeholders := make([]string, len(group_names))
+		for i := range group_names {
+			placeholders[i] = "?"
+		}
+
+		// Die Verfügbaren Gruppen werden aufgearbeitet
+		set_group_membership_interface := make([]interface{}, len(group_names))
+		for i, v := range group_names {
+			set_group_membership_interface[i] = v
+		}
+
+		// Der Threadlock wird verwendet
+		obj.lock.Lock()
+
 		// Der Befehl wird erstellt
 		query_string := fmt.Sprintf(SQLITE_GET_SET_GROUP_PREMITTEDET_GROUPS_EXPLICIT, strings.Join(placeholders, ","))
 
@@ -291,19 +292,17 @@ func (obj *Database) GetAllMetaUserGroupsByDirectoryApiUser(filter_mode base.Get
 		for rows.Next() {
 			// Die Antworten werden eingelesen
 			new_item := new(base.UserGroupDirectoryApiUser)
-			var directory_service_id int64
-			var directory_service_api_user_id int64
-			err = rows.Scan(&new_item.SetGroupMembershipPremission, &directory_service_api_user_id, &directory_service_id, &new_item.Name, &new_item.Id)
+			err = rows.Scan(&new_item.SetGroupMembershipPremission, &new_item.UserId, &new_item.DirectoryServiceId, &new_item.Name, &new_item.Id)
 			if err != nil {
 				obj.lock.Unlock()
 				return nil, fmt.Errorf("ValidateDirectoryAPIUserAndGetProcessId: AA " + err.Error())
 			}
 
 			// Es wird geprüft ob die Service ID's übereinstimmen
-			if directory_service_api_user_id != service_data.DbServiceUserId {
+			if new_item.UserId != service_data.DbServiceUserId {
 				return nil, fmt.Errorf("GetAllMetaUserGroupsByDirectoryApiUser: Internal error")
 			}
-			if directory_service_id != service_data.DbServiceId {
+			if new_item.DirectoryServiceId != service_data.DbServiceId {
 				return nil, fmt.Errorf("GetAllMetaUserGroupsByDirectoryApiUser: Internal error")
 			}
 
@@ -318,25 +317,40 @@ func (obj *Database) GetAllMetaUserGroupsByDirectoryApiUser(filter_mode base.Get
 		}
 
 		// Es wird geprüft ob alle benötigten Gruppen abgerufen wurden
+		founds, not_founds := []string{}, []string{}
 		for i := range group_names {
 			has_found := false
 			for x := range extracted_group_from_datas {
-
+				if group_names[i] == extracted_group_from_datas[x].Name {
+					has_found = true
+					break
+				}
+			}
+			if has_found {
+				founds = append(founds, group_names[i])
+			} else {
+				not_founds = append(not_founds, group_names[i])
 			}
 		}
+
+		// Es müssen genausoviele Gruppen gefunden wurden sein wie angefordert
+		if len(founds) != len(group_names) {
+			obj.lock.Unlock()
+			return nil, fmt.Errorf(fmt.Sprintf("GetAllMetaUserGroupsByDirectoryApiUser: groups {%s} not found", strings.Join(not_founds, ",")))
+		}
+
+		// Der Threadlock wird freigegeben
+		obj.lock.Unlock()
 	}
 
-	// Der Threadlock wird freigegeben
-	obj.lock.Unlock()
-
-	// Die
-	return []string{}, fmt.Errorf("Er")
+	// Die Operation wurde erfolgreich ausgeführt, die Ergbnisse werden ohne Fehler zurückgegeben
+	return extracted_group_from_datas, nil
 }
 
 /*
 Wird verwendet um einen neuen Benutzer zu registrieren
 */
-func (obj *Database) CreateNewUserNoneRoot(cred_owner_pkey string, enc_master_key string, master_pkey string, email_address string, encrypted_password string, gender string, first_name []string, last_name []string, service_data *base.DirectoryServiceProcess, source_meta_data base.RequestMetaDataDbEntry) (*base.NewUserDbResult, error) {
+func (obj *Database) CreateNewUserNoneRoot(cred_owner_pkey string, enc_master_key string, master_pkey string, email_address string, encrypted_password string, gender string, first_name []string, last_name []string, set_groups []*base.UserGroupDirectoryApiUser, service_data *base.DirectoryServiceProcess, source_meta_data base.RequestMetaDataDbEntry) (*base.NewUserDbResult, error) {
 	// Es wird geprüft ob das Datenbank Objekt verfügbar ist
 	if obj.db == nil {
 		return nil, fmt.Errorf("CreateNewUserNoneRoot: internal db error")
@@ -371,10 +385,15 @@ func (obj *Database) CreateNewUserNoneRoot(cred_owner_pkey string, enc_master_ke
 	// Es wird ein Hash aus der E-Mail Adresse erstellt
 	e_match_hash := hdsha3.ComputeSha256(prep_email)
 
-	// Die Aktuelle ServiceID wird ermittelt
-	c_service_id := 0
-	if service_data != nil {
-		c_service_id = int(service_data.DatabaseId)
+	// Es wird geprüft ob diesem Benutzer Gruppen Zugeordnet werden sollen, wenn ja wird geprüft ob der Service API User dafür berechtigt ist diesem Benutzer einer neuem Gruppe zuzuordnen
+	// Es wird geprüft ob der Service Benutezr berechtigt ist diesem Benutzer
+	for i := range set_groups {
+		if set_groups[i].DirectoryServiceId != service_data.DbServiceId {
+			return nil, fmt.Errorf("CreateNewUserNoneRoot: service api user dosent allowed to set user to group, 1")
+		}
+		if !set_groups[i].SetGroupMembershipPremission {
+			return nil, fmt.Errorf("CreateNewUserNoneRoot: service api user dosent allowed to set user to group, 2")
+		}
 	}
 
 	// Der Threadlock wird verwendet
@@ -392,7 +411,7 @@ func (obj *Database) CreateNewUserNoneRoot(cred_owner_pkey string, enc_master_ke
 	}
 
 	// Es wird ein neuer Benutzer in der Datenbank angelegt
-	root_result, err := obj.db.Exec(SQLITE_CREATE_NEW_NONE_ROOT_USER, current_time.Unix(), 1, prep_master_pkey, gender, -2, source_meta_data.DbEntryId, c_service_id)
+	root_result, err := obj.db.Exec(SQLITE_CREATE_NEW_NONE_ROOT_USER, current_time.Unix(), 1, prep_master_pkey, gender, -2, source_meta_data.DbEntryId, service_data.DbServiceUserId)
 	if err != nil {
 		obj.lock.Unlock()
 		return nil, fmt.Errorf("CreateNewUserNoneRoot: " + err.Error())
@@ -406,7 +425,7 @@ func (obj *Database) CreateNewUserNoneRoot(cred_owner_pkey string, enc_master_ke
 	}
 
 	// Die Email Adresse wird hinzugefügt
-	email_writing_result, err := obj.db.Exec(SQLITE_WRITE_EMAIL_ADDRESS, user_id, prep_email, e_match_hash, 1, current_time.Unix(), c_service_id, source_meta_data.DbEntryId, -2)
+	email_writing_result, err := obj.db.Exec(SQLITE_WRITE_EMAIL_ADDRESS, user_id, prep_email, e_match_hash, 1, current_time.Unix(), service_data.DbServiceUserId, source_meta_data.DbEntryId, -2)
 	if err != nil {
 		obj.lock.Unlock()
 		return nil, fmt.Errorf("CreateNewUserNoneRoot: " + err.Error())
@@ -420,7 +439,14 @@ func (obj *Database) CreateNewUserNoneRoot(cred_owner_pkey string, enc_master_ke
 	}
 
 	// Die Login Credentials werden hinzugefügt
-	_, err = obj.db.Exec(SQLITE_WRITE_LOGIN_CREDENTIALS, user_id, 1, email_id, current_time.Unix(), cred_owner_pkey, encrypted_password, enc_master_key, c_service_id, source_meta_data.DbEntryId, -2)
+	_, err = obj.db.Exec(SQLITE_WRITE_LOGIN_CREDENTIALS, user_id, 1, email_id, current_time.Unix(), cred_owner_pkey, encrypted_password, enc_master_key, service_data.DbServiceUserId, source_meta_data.DbEntryId, -2)
+	if err != nil {
+		obj.lock.Unlock()
+		return nil, fmt.Errorf("CreateNewUserNoneRoot: " + err.Error())
+	}
+
+	// Der Benutzer wird dem Aktuellen Dienst zugeordnet
+	_, err = obj.db.Exec(SQLITE_WRITE_SET_USER_MEMBERSHIP_OF_DIRECOTRY_SERVICE, user_id, service_data.DbServiceId, 1, current_time.Unix(), service_data.DbServiceUserId, source_meta_data.DbEntryId, -2)
 	if err != nil {
 		obj.lock.Unlock()
 		return nil, fmt.Errorf("CreateNewUserNoneRoot: " + err.Error())
@@ -428,7 +454,7 @@ func (obj *Database) CreateNewUserNoneRoot(cred_owner_pkey string, enc_master_ke
 
 	// Die Verfügbaren Vornamen werden in die Datenbank geschrieben
 	for i := range first_name {
-		_, err := obj.db.Exec(SQLITE_WRITE_FIRSTNAME, first_name[i], current_time.Unix(), i, user_id, 1, c_service_id, source_meta_data.DbEntryId, -2)
+		_, err := obj.db.Exec(SQLITE_WRITE_FIRSTNAME, first_name[i], current_time.Unix(), i, user_id, 1, service_data.DbServiceUserId, source_meta_data.DbEntryId, -2)
 		if err != nil {
 			obj.lock.Unlock()
 			return nil, fmt.Errorf("CreateNewUserNoneRoot: " + err.Error())
@@ -437,7 +463,18 @@ func (obj *Database) CreateNewUserNoneRoot(cred_owner_pkey string, enc_master_ke
 
 	// Die Verfügbaren Nachnamen werden in die Datenbank geschrieben
 	for i := range last_name {
-		_, err := obj.db.Exec(SQLITE_WRITE_LASTNAME, last_name[i], current_time.Unix(), 1, user_id, i, c_service_id, source_meta_data.DbEntryId, -2)
+		_, err := obj.db.Exec(SQLITE_WRITE_LASTNAME, last_name[i], current_time.Unix(), 1, user_id, i, service_data.DbServiceUserId, source_meta_data.DbEntryId, -2)
+		if err != nil {
+			obj.lock.Unlock()
+			return nil, fmt.Errorf("CreateNewUserNoneRoot: " + err.Error())
+		}
+	}
+
+	// Der Benutzer wird den Einzelenen Gruppen zugewiesen sofern vorhanden
+	activated_groups := []string{}
+	for i := range set_groups {
+		activated_groups = append(activated_groups, set_groups[i].Name)
+		_, err = obj.db.Exec(SQLITE_WRITE_USER_API_USER_SET_GROUP, set_groups[i].Id, user_id, 1, current_time.Unix(), set_groups[i].DirectoryServiceId, service_data.DbServiceUserId, source_meta_data.DbEntryId, -2)
 		if err != nil {
 			obj.lock.Unlock()
 			return nil, fmt.Errorf("CreateNewUserNoneRoot: " + err.Error())
@@ -448,8 +485,90 @@ func (obj *Database) CreateNewUserNoneRoot(cred_owner_pkey string, enc_master_ke
 	obj.lock.Unlock()
 
 	// Die Daten werden zusammengefasst und zurückgegeben
-	return_value := base.NewUserDbResult{UserId: user_id, IsRoot: false}
+	return_value := base.NewUserDbResult{UserId: user_id, IsRoot: false, UserGroups: activated_groups}
 	return &return_value, nil
+}
+
+/*
+Wird verwendet um eine neue Session anhand der Nutzerdaten zu erstellen
+*/
+func (obj *Database) CreateNewUserSessionByUID(userid int64, service_data *base.DirectoryServiceProcess, source_meta_data base.RequestMetaDataDbEntry, is_primary bool) (*base.UserSessionDbResult, error) {
+	// Es wird geprüft ob das Datenbank Objekt verfügbar ist
+	if obj.db == nil {
+		return nil, fmt.Errorf("CreateNewUserSessionByUID: internal db error")
+	}
+
+	// Es wird geprüft ob die Quell Metadaten verfügabr sind, wenn nein wird der Vorgang abgebrochen
+	if service_data == nil {
+		return nil, fmt.Errorf("CreateNewUserSessionByUID: request has no meta data, aborted")
+	}
+
+	// Es wird geprüft ob es sich um eine Zulässige UserID handelt
+	if userid <= 0 {
+		return nil, fmt.Errorf("CreateNewUserSessionByUID: cant create session for unkown user")
+	}
+
+	// Die Aktuelle sowie die Ablaufzeit wird ermittelt
+	current_time := time.Now()
+
+	// Es wird ein Schlüsselpaar erzeugt, dieses Schlüsselpaar wird an den Client übertragen
+	client_session_key_pair, err := hdcrypto.CreateRandomKeypair()
+	if err != nil {
+		return nil, fmt.Errorf("CreateNewUserSessionByUID: " + err.Error())
+	}
+
+	// Es wird ein weiteres Schlüsselpaar erstellt, dieses Schlüsselpaar wird nicht an den Client übertragen, nur der Öffentliche Schlüssel wird übertragen
+	server_session_key_pair, err := hdcrypto.CreateRandomKeypair()
+	if err != nil {
+		return nil, fmt.Errorf("CreateNewUserSessionByUID: " + err.Error())
+	}
+
+	// Es wird ein 64Bit Fingerprint aus der SessionId erstellt
+	fingerprint := hdsha3.ComputeSha64Int64(server_session_key_pair.PublicKey)
+
+	// Die SessionId für den Service wird erstellt
+	service_session_id := hdcrypto.RandomBase32Secret()
+
+	// Der Threadlock wird ausgeführt
+	obj.lock.Lock()
+
+	// Es wird geprüft ob Benutzer teil des Dienstes ist sowie Aktiv
+	var allowed_pass string
+	if err := obj.db.QueryRow(SQLITE_CHECK_USER_SERVICES_STATE_AND_MEMBERSHIP, userid, service_data.DbServiceId).Scan(&allowed_pass); err != nil {
+		obj.lock.Unlock()
+		return nil, err
+	}
+	if allowed_pass != "YES" {
+		obj.lock.Unlock()
+		return nil, fmt.Errorf("CreateNewUserSessionByUID: ")
+	}
+
+	// Es wird eine neue Sitzung für den Aktuellen Benutzer erstellt
+	root_result, err := obj.db.Exec(SQLITE_WRITE_CREATE_USER_SESSION, userid, service_data.DbServiceId, -2, current_time.Unix(), client_session_key_pair.PublicKey, server_session_key_pair.PrivateKey, fingerprint, service_session_id, service_data.DbServiceUserId, source_meta_data.DbEntryId, -2)
+	if err != nil {
+		obj.lock.Unlock()
+		return nil, fmt.Errorf("CreateNewUserSessionByUID: " + err.Error())
+	}
+
+	// Die ID des neuen Eintrages wird ermittelt
+	session_db_id, err := root_result.LastInsertId()
+	if err != nil {
+		obj.lock.Unlock()
+		return nil, fmt.Errorf("CreateNewUserSessionByUID: " + err.Error())
+	}
+
+	// Der Threadlock wird freiegeben
+	obj.lock.Unlock()
+
+	// Das Sitzungsobjekt wird erstellt
+	return_value := new(base.UserSessionDbResult)
+	return_value.SessionDbId = session_db_id
+	return_value.ClientsidePrivKey = client_session_key_pair.PrivateKey
+	return_value.ClintsidePkey = server_session_key_pair.PublicKey
+	return_value.ServiceSideSessionId = service_session_id
+
+	// der Vorgang wurde erfolgreich durchgeführt
+	return return_value, nil
 }
 
 /*
@@ -475,14 +594,14 @@ func (obj *Database) GetUserLoginProcessKey(public_login_cred_key string, req_me
 /*
 Wird verwendet um eine neue Sitzung zu erstellen
 */
-func (obj *Database) CreateNewUserSession(public_login_cred_key string, public_login_cred_sig string, login_process_pkey string, req_metadata *base.RequestMetaData) (*base.UserSession, error) {
-	return &base.UserSession{SessionId: "", LoginProcessHash: "", SessionBrowserPublicKey: "", SessionServerPublicKey: "", SessionServerSignature: ""}, nil
+func (obj *Database) CreateNewUserSession(public_login_cred_key string, public_login_cred_sig string, login_process_pkey string, req_metadata *base.RequestMetaData) (*base.UserSessionDbResult, error) {
+	return &base.UserSessionDbResult{}, nil
 }
 
 /*
 Wird verwendet um die Metadaten einer Sitzung abzurufen
 */
-func (obj *Database) GetSessionFromDbById(session_id string, req_metadata *base.RequestMetaData) (*base.UserSession, error, error) {
+func (obj *Database) GetSessionFromDbById(session_id string, req_metadata *base.RequestMetaData) (*base.UserSessionDbResult, error, error) {
 	return nil, nil, nil
 }
 

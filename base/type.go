@@ -37,13 +37,11 @@ type UserKeyPair struct {
 type UserGroupData struct {
 }
 
-type UserSession struct {
-	UserMode                string
-	SessionId               string
-	LoginProcessHash        string
-	SessionBrowserPublicKey string
-	SessionServerPublicKey  string
-	SessionServerSignature  string
+type UserSessionDbResult struct {
+	SessionDbId          int64
+	ClintsidePkey        string
+	ClientsidePrivKey    string
+	ServiceSideSessionId string
 }
 
 type VerifyLoginCredentialsRequest struct {
@@ -59,12 +57,30 @@ type CreateNewUserSessionRequest struct {
 }
 
 type NewUserDbResult struct {
-	UserId int64
-	IsRoot bool
+	UserGroups []string
+	UserId     int64
+	IsRoot     bool
 }
 
 type UserGroupDirectoryApiUser struct {
 	SetGroupMembershipPremission bool
+	DirectoryServiceId           int64
+	UserId                       int64
 	Name                         string
 	Id                           int64
+}
+
+type UserCreateResponse struct {
+	IsRoot                  bool
+	UserGroups              []string
+	Errors                  []string
+	EncryptedClientData     string
+	ServiceSideSessionId    string
+	HasClientSideSession    bool
+	HasServiceSideSessionId bool
+}
+
+type EncryptedSessionCapsule struct {
+	ClientsidePrivKey string `cbor:"1,keyasint,omitempty"`
+	ClintsidePkey     string `cbor:"2,keyasint,omitempty"`
 }
