@@ -156,7 +156,7 @@ CREATE TABLE "directory_service_api_users" (
 
 // Dieser befehl wird verwendet um die Tabelle für die Service User API Requests zu erstellen
 var sql_services_user_api_request = `
-CREATE TABLE "directory_services_api_user_requests_start" (
+CREATE TABLE "directory_services_api_user_requests" (
 	"dsaurid"	INTEGER UNIQUE,
 	"dsauid"	INTEGER,
 	"user_agent"	TEXT,
@@ -273,6 +273,18 @@ CREATE TABLE "user_sessions" (
 );
 `
 
+// Schleißt einen Datenbank request
+var sql_create_meta_request_closed_table = `
+CREATE TABLE "request_stops" (
+	"rstid"	INTEGER,
+	"reqid"	INTEGER,
+	"error"	TEXT,
+	"warning"	TEXT,
+	"created_at"	INTEGER,
+	PRIMARY KEY("rstid" AUTOINCREMENT)
+);
+`
+
 // Stellt das Datenbank Objekt dar
 type Database struct {
 	privKey *string
@@ -298,9 +310,9 @@ func CreateNewSQLiteBasedDatabase(file_path string, local_priv_key *string) (*Da
 	var name string
 	email_addresses, directory_service_api_users, user_directory_service_members := false, false, false
 	login_creds, users, user_groups, user_group_member, first_names := false, false, false, false, false
-	key_pairs, last_names, directory_services_api_user_requests_start := false, false, false
+	key_pairs, last_names, directory_services_api_user_requests := false, false, false
 	directory_service_api_user_permissions, requests, user_groups_directory_services_accesses := false, false, false
-	user_groups_directory_service_api_user_premissions, user_sessions := false, false
+	user_groups_directory_service_api_user_premissions, user_sessions, request_stops := false, false, false
 	for response.Next() {
 		// Der Name wird geprüft
 		err = response.Scan(&name)
@@ -327,8 +339,8 @@ func CreateNewSQLiteBasedDatabase(file_path string, local_priv_key *string) (*Da
 			key_pairs = true
 		} else if name == "directory_service_api_users" {
 			directory_service_api_users = true
-		} else if name == "directory_services_api_user_requests_start" {
-			directory_services_api_user_requests_start = true
+		} else if name == "directory_services_api_user_requests" {
+			directory_services_api_user_requests = true
 		} else if name == "directory_service_api_user_permissions" {
 			directory_service_api_user_permissions = true
 		} else if name == "request_starts" {
@@ -341,12 +353,23 @@ func CreateNewSQLiteBasedDatabase(file_path string, local_priv_key *string) (*Da
 			user_directory_service_members = true
 		} else if name == "user_sessions" {
 			user_sessions = true
+		} else if name == "request_stops" {
+			request_stops = true
 		}
 	}
 
 	// Es wird versucht den Aktuellen Cursor zu schließen
 	if db_err := response.Close(); db_err != nil {
 		return nil, fmt.Errorf("CreateNewSQLiteBasedDatabase: " + db_err.Error())
+	}
+
+	// Sollte die Request Stops Tabelle nicht vorhanden sein wird diese erzeugt
+	if !request_stops {
+		_, err = db.Exec(sql_create_meta_request_closed_table)
+		if err != nil {
+			return nil, fmt.Errorf("CreateNewSQLiteBasedDatabase: " + err.Error())
+		}
+		fmt.Println("Request stops table created")
 	}
 
 	// Sollte die Directory Tabelle nicht vorhanden sein wird diese erzeugt
@@ -431,7 +454,7 @@ func CreateNewSQLiteBasedDatabase(file_path string, local_priv_key *string) (*Da
 	}
 
 	// Sollte keine Services Tabelle vorhanden sein, so wird diese erstellt
-	if !directory_services_api_user_requests_start {
+	if !directory_services_api_user_requests {
 		_, err = db.Exec(sql_services_user_api_request)
 		if err != nil {
 			return nil, fmt.Errorf("CreateNewSQLiteBasedDatabase: " + err.Error())

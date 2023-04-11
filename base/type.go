@@ -15,7 +15,7 @@ type RequestMetaData struct {
 	SourcePort    string
 }
 
-type RequestMetaDataDbEntry struct {
+type RequestMetaDataSession struct {
 	DbEntryId int64
 }
 
@@ -45,8 +45,10 @@ type UserSessionDbResult struct {
 }
 
 type VerifyLoginCredentialsRequest struct {
-	PublicLoginCredentialKey *string
-	MetaData                 *RequestMetaData
+	LoginCredentialSignatureKey *string
+	PublicLoginCredentialKey    *string
+	OneTimePublicSessionKey     *string
+	MetaData                    *RequestMetaData
 }
 
 type CreateNewUserSessionRequest struct {
@@ -83,4 +85,7 @@ type UserCreateResponse struct {
 type EncryptedSessionCapsule struct {
 	ClientsidePrivKey string `cbor:"1,keyasint,omitempty"`
 	ClintsidePkey     string `cbor:"2,keyasint,omitempty"`
+}
+
+type LoginProcessKeyCreationDbResult struct {
 }

@@ -38,7 +38,7 @@ func readProxyHeaderData(origbasedata string) (*base.RequestMetaData, error) {
 }
 
 // Wird verwendet um die Logindaten des Services Users zu prüfen
-func ValidateServiceAPIUser(t *db.Database, r *http.Request, function_name string, smeta_data base.RequestMetaDataDbEntry) (bool, bool, *base.DirectoryServiceProcess, error) {
+func ValidateServiceAPIUser(t *db.Database, r *http.Request, function_name string, smeta_data base.RequestMetaDataSession) (bool, bool, *base.DirectoryServiceProcess, error) {
 	// Es wird geprüft ob die Zertifikate vorhanden
 	if len(r.TLS.PeerCertificates) == 0 {
 		return false, false, nil, fmt.Errorf("ValidateServiceAPIUser: no cert")
@@ -82,8 +82,8 @@ func ValidateServiceAPIUser(t *db.Database, r *http.Request, function_name strin
 	return true, true, result, nil
 }
 
-// Gibt die Endgeräte Metadaten der Verbindung aus
-func GetMetadataWithDbEnty(t *db.Database, r *http.Request, function_name string) (*base.RequestMetaDataDbEntry, error) {
+// Erstellt ein neues Metadaten Objekt und schreibt dieses in eine Datenbank
+func CreateNewSessionRequestEntryAndGet(t *db.Database, r *http.Request, function_name string) (*base.RequestMetaDataSession, error) {
 	// Es wird geprüft ob ein Proxy Eintrag vorhanden ist
 	proxy_data := r.Header.Get("Origin-Request-Proxy-Data")
 	if len(proxy_data) > 0 {
@@ -133,6 +133,17 @@ func GetMetadataWithDbEnty(t *db.Database, r *http.Request, function_name string
 
 	// Das Resuldat wird zurückgegeben
 	return result, nil
+}
+
+// Wird verwendet um eine Metadaten Sitzung zu schlißen
+func CloseSessionRequest(t *db.Database, r *http.Request, request_session *base.RequestMetaDataSession, warning *string, errort error) {
+	// Es wird eine Anfrage an die Datenbank gestellt um den Request zu schließen
+	if err := t.CloseEntrySessionRequest(request_session, warning, errort); err != nil {
+		fmt.Println("Unkown internal error: " + err.Error())
+		return
+	}
+
+	fmt.Println("Request closed")
 }
 
 // Erstellt einen neuen RPC Server

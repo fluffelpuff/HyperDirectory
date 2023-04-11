@@ -32,7 +32,7 @@ SELECT value FROM directory_service_api_user_permissions WHERE directory_service
 
 // Dieser befehl wird verwendet um einen Service API-User Request in der Datenbank zu speichern
 var SQLITE_WRITE_NEW_SESSION_DATA = `
-INSERT INTO "main"."directory_services_api_user_requests_start" ("dsauid", "user_agent", "host", "accept", "encodings", "connection", "content_length", "content_type", "source_ip", "source_port", "function_name", "created_at", "request_id") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO "main"."directory_services_api_user_requests" ("dsauid", "user_agent", "host", "accept", "encodings", "connection", "content_length", "content_type", "source_ip", "source_port", "function_name", "created_at", "request_id") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 `
 
 // Dieser befehl wird verwendet um eine E-Mail Adresse hinzuzufügen
@@ -118,4 +118,50 @@ WHERE
 // Wird verwendet um eine User Session zu erstellen
 var SQLITE_WRITE_CREATE_USER_SESSION = `
 INSERT INTO user_sessions (user_id, service_id, device_id, created_at, client_pkey, server_privkey, session_id_chsum, service_session_id, created_by_service_id_user, created_by_request_id, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+`
+
+// Wird verwendet um zu ermitteln ob der Entsprechende Meta Request bereits geschlossen wurde
+var SQLITE_GET_META_REQUEST_CLOSED = `
+SELECT
+	CASE WHEN  COUNT(request_stops.reqid) >= 1
+       THEN 'CLOSED'
+       ELSE 'OPEN'
+       END AS state
+FROM
+request_starts
+JOIN request_stops
+ON request_stops.reqid = request_starts.reqid
+WHERE request_starts.reqid == ?
+`
+
+// Wird verwendet um eine Request Session ohne Warnung und ohne Fehler zu schließen
+var SQLITE_WRITE_REQUEST_SESSION_CLOSE = `
+INSERT INTO request_stops (reqid, error, warning, created_at) VALUES (?, '', '', ?);
+`
+
+// Wird verwendet um eine Fehlermeldung und oder eine Warnung in die Datenbank zu schreiben
+var SQLITE_WRITE_REQUEST_SESSION_CLOSE_WITH_WARNING_OR_ERROR = `
+INSERT INTO request_stops (reqid, error, warning, created_at) VALUES (?, ?, ?, ?);
+`
+
+// Wird verwendet um zu überprüfen ob es einen Aktiven Öffentlichen Schlüssel für diesen Benutzer gibt
+var SQLITE_GET_LOGIN_CREDENTIALS_ACCEPTED_BY_PUB_KEY = `
+SELECT
+	CASE WHEN  COUNT(email_pw_login_credentials.lcid) >= 1
+       THEN 'FOUND'
+       ELSE 'NOT_FOUND'
+       END AS state
+FROM
+email_pw_login_credentials
+WHERE email_pw_login_credentials.owner_pkey == ? AND email_pw_login_credentials.active == 1
+`
+
+// Wird verwendet um zu überprüfen ob der OneTime Session Creation Key bereits in der Datenbank vorhanden ist
+var SQLITE_GET_ONE_TIME_SESSION_CREATION_KEY_AVAIL = `
+
+`
+
+// Wird verwendet um eine neuen Login Vorgang zu erstellen
+var SQLITE_WRITE_NEW_LOGIN_PROCESS = `
+
 `

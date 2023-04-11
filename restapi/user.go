@@ -57,42 +57,65 @@ func (t *User) VerifyLoginCredentials(r *http.Request, args *base.VerifyLoginCre
 Ruft den Account Index ab, dieser wird z.b benötigt um einen Anmeldevorgang auszuführen
 */
 
-func (t *User) GetUserLoginProcessHash(r *http.Request, args *base.VerifyLoginCredentialsRequest, result *string) error {
-	// Es wird geprüft ob das Objekt korrekt ist
-	if args == nil {
-		return fmt.Errorf("GetUserLoginProcessHash: invalid request")
-	}
-	if args.PublicLoginCredentialKey == nil {
-		return fmt.Errorf("GetUserLoginProcessHash: invalid request")
-	}
+func (t *User) CreateNewLoginProcess(r *http.Request, args *base.VerifyLoginCredentialsRequest, result *string) error {
+	// Speichert den Namen der Aktuellen Funktion ab und erstellt eine Sitzung in der Datenbank
+	function_name_var := "@create_new_login_process"
 
-	// Es wird geprüft ob das Passwort 64 Zeichen lang ist
-	if len(*args.PublicLoginCredentialKey) != 64 {
-		return fmt.Errorf("GetUserLoginProcessHash: invalid password validation hash")
-	}
-
-	// Die Request Metadaten werden zusammengefasst
-	meta_data := base.RequestMetaData{}
-
-	// Es wird geprüft ob es einen Origin Eintrag gibt
-	if args.MetaData != nil {
-		meta_data = *args.MetaData
-	}
-
-	// Es wird eine Anfrage an die Datenbank gestellt
-	db_check_result := t.Database.VerifyLoginCredentials(*args.PublicLoginCredentialKey, &meta_data)
-	if !db_check_result {
-		return fmt.Errorf("GetUserLoginProcessHash: unkown user data")
-	}
-
-	// Der Aktuelle Login Prozesshash wird abgerufen
-	login_process_hash, err := t.Database.GetUserLoginProcessKey(*args.PublicLoginCredentialKey, &meta_data)
+	// Die Request Metadaten werden zusammengefasst, in die Datenbank geschrieben und abgerufen
+	source_meta_data, err := CreateNewSessionRequestEntryAndGet(t.Database, r, function_name_var)
 	if err != nil {
-		return fmt.Errorf("GetUserLoginProcessHash: " + err.Error())
+		return &json2.Error{
+			Code:    500,
+			Message: "Internal error",
+		}
 	}
 
-	// Die Antwort wird zurückgesendet
-	*result = login_process_hash
+	// Die Aktuellen Dienstdaten werden geprüft
+	is_acccepted, user_authorized_function, directory_service_user_io, err := ValidateServiceAPIUser(t.Database, r, function_name_var, *source_meta_data)
+	if err != nil {
+		// Die Sitzung wird wieder geschlossen
+		CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("CreateNewLoginProcess: 1: "+err.Error()))
+
+		// Es wird ein fehler zurückgegeben
+		return &json2.Error{
+			Code:    500,
+			Message: "Invalid request, aborted",
+		}
+	}
+
+	// Sollten die API Daten nicht Akzeptiert werden, wird der Vorgang abgebrochen
+	if !is_acccepted {
+		// Die Sitzung wird wieder geschlossen
+		CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("CreateNewLoginProcess: 2: user not authenticated"))
+
+		// Es wird ein fehler zurückgegeben
+		return &json2.Error{
+			Code:    401,
+			Message: "The service could not be authenticated, unkown user",
+		}
+	}
+
+	// Sollte der Benutzer nicht berechtigt sein, diese Funktion auszuführen, wird der vorgang abgebrochen
+	if !user_authorized_function {
+		// Die Sitzung wird wieder geschlossen
+		CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("CreateNewLoginProcess: 3: user not authenticated"))
+
+		// Es wird ein fehler zurückgegeben
+		return &json2.Error{
+			Code:    401,
+			Message: "The service could not be authenticated, not authorized for this function",
+		}
+	}
+
+	// Es wird geprüft ob es einen Aktiven Benutzer passender zu dem Öffentlichen Schlüssel passt
+	_, err = t.Database.CreateNewLoginProcessKey(*args.PublicLoginCredentialKey, *args.OneTimePublicSessionKey, directory_service_user_io, *source_meta_data)
+	if err != nil {
+		// Die Sitzung wird wieder geschlossen
+		CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("CreateNewLoginProcess: 7: "+err.Error()))
+
+		// Es wird ein fehler zurückgegeben
+		return &json2.Error{Code: 400, Message: "Internal error"}
+	}
 
 	// Der Vorgang wurde ohne fehler durchgeführt
 	return nil
@@ -149,11 +172,11 @@ Wird verwendet um einen neuen Benutzer zu erstellen
 */
 
 func (t *User) CreateNewEMailBasedUserNoneRoot(r *http.Request, args *base.CreateNewUserNoneRoot, result *base.UserCreateResponse) error {
-	// Speichert den Namen der Aktuellen Funktion ab
+	// Speichert den Namen der Aktuellen Funktion ab und erstellt eine Sitzung in der Datenbank
 	function_name_var := "@create_new_user_none_root"
 
-	// Die Request Metadaten werden zusammengefasst
-	source_meta_data, err := GetMetadataWithDbEnty(t.Database, r, function_name_var)
+	// Die Request Metadaten werden zusammengefasst, in die Datenbank geschrieben und abgerufen
+	source_meta_data, err := CreateNewSessionRequestEntryAndGet(t.Database, r, function_name_var)
 	if err != nil {
 		return &json2.Error{
 			Code:    500,
@@ -164,6 +187,10 @@ func (t *User) CreateNewEMailBasedUserNoneRoot(r *http.Request, args *base.Creat
 	// Die Aktuellen Dienstdaten werden geprüft
 	is_acccepted, user_authorized_function, directory_service_user_io, err := ValidateServiceAPIUser(t.Database, r, function_name_var, *source_meta_data)
 	if err != nil {
+		// Die Sitzung wird wieder geschlossen
+		CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 1: "+err.Error()))
+
+		// Es wird ein fehler zurückgegeben
 		return &json2.Error{
 			Code:    500,
 			Message: "Invalid request, aborted",
@@ -172,6 +199,10 @@ func (t *User) CreateNewEMailBasedUserNoneRoot(r *http.Request, args *base.Creat
 
 	// Sollten die API Daten nicht Akzeptiert werden, wird der Vorgang abgebrochen
 	if !is_acccepted {
+		// Die Sitzung wird wieder geschlossen
+		CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 2: user not authenticated"))
+
+		// Es wird ein fehler zurückgegeben
 		return &json2.Error{
 			Code:    401,
 			Message: "The service could not be authenticated, unkown user",
@@ -180,6 +211,10 @@ func (t *User) CreateNewEMailBasedUserNoneRoot(r *http.Request, args *base.Creat
 
 	// Sollte der Benutzer nicht berechtigt sein, diese Funktion auszuführen, wird der vorgang abgebrochen
 	if !user_authorized_function {
+		// Die Sitzung wird wieder geschlossen
+		CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 3: user not authenticated"))
+
+		// Es wird ein fehler zurückgegeben
 		return &json2.Error{
 			Code:    401,
 			Message: "The service could not be authenticated, not authorized for this function",
@@ -188,8 +223,12 @@ func (t *User) CreateNewEMailBasedUserNoneRoot(r *http.Request, args *base.Creat
 
 	// Es wird geprüft ob das Request Objekt korrekt ist
 	if !args.PreValidate() {
+		// Die Sitzung wird wieder geschlossen
+		CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 4: Bad request"))
+
+		// Es wird ein fehler zurückgegeben
 		return &json2.Error{
-			Code:    401,
+			Code:    400,
 			Message: "Bad Request",
 		}
 	}
@@ -225,7 +264,11 @@ func (t *User) CreateNewEMailBasedUserNoneRoot(r *http.Request, args *base.Creat
 				create_session_id = true
 			}
 		default:
-			return &json2.Error{Code: 401, Message: "Bad Request"}
+			// Die Sitzung wird wieder geschlossen
+			CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 5: Bad request"))
+
+			// Es wird ein fehler zurückgegeben
+			return &json2.Error{Code: 400, Message: "Bad Request"}
 		}
 	}
 
@@ -235,31 +278,50 @@ func (t *User) CreateNewEMailBasedUserNoneRoot(r *http.Request, args *base.Creat
 	if len(groups) > 0 {
 		returned_groups, err = t.Database.GetAllMetaUserGroupsByDirectoryApiUser(base.FetchExplicit, directory_service_user_io, []base.PremissionFilter{base.SET_GROUP_MEMBER}, groups...)
 		if err != nil {
-			fmt.Println(err)
-			return err
+			// Die Sitzung wird wieder geschlossen
+			CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 6: "+err.Error()))
+
+			// Es wird ein fehler zurückgegeben
+			return &json2.Error{Code: 400, Message: "Internal error"}
 		}
 	}
 
 	// Es wird geprüft ob es bereits einen benutzer mit der E-Mail Adresse, dem Public Masterkey oder dem Public Owner Key gibt
 	email_avail, pu_master_avail, owner_avail, err := t.Database.CheckUserDataAvailability(*args.EMailAddress, *args.PublicMasterKey, *args.CredentialsOwnerPublicKey, directory_service_user_io, *source_meta_data, false)
 	if err != nil {
-		return fmt.Errorf("CreateNewUserNoneRoot: " + err.Error())
+		// Die Sitzung wird wieder geschlossen
+		CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 7: "+err.Error()))
+
+		// Es wird ein fehler zurückgegeben
+		return &json2.Error{Code: 400, Message: "Internal error"}
 	}
 
 	// Es wird geprüft ob die E-Mail bereits verwendet wird
 	if !email_avail {
-		return fmt.Errorf("email_already_used")
+		// Die Sitzung wird wieder geschlossen
+		CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 7: email alrady used"))
+
+		// Es wird ein fehler zurückgegeben
+		return &json2.Error{Code: 400, Message: "email_alrady_used"}
 	}
 
 	// Sollte eine der anderen Daten bereits verwendet werden, so wird der Vorgang ohne begründung abgebrochen
 	if !pu_master_avail || !owner_avail {
-		return fmt.Errorf("data_rejected")
+		// Die Sitzung wird wieder geschlossen
+		CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 8: master or owner key alrady used"))
+
+		// Es wird ein fehler zurückgegeben
+		return &json2.Error{Code: 400, Message: "data_rejected"}
 	}
 
 	// Das Benutzerkonto wird erstellt
 	db_result, err := t.Database.CreateNewUserNoneRoot(*args.CredentialsOwnerPublicKey, *args.EncryptedMasterKey, *args.PublicMasterKey, *args.EMailAddress, *args.EncryptedUserPassword, *args.Gender, args.FirstName, args.LastName, returned_groups, directory_service_user_io, *source_meta_data)
 	if err != nil {
-		return fmt.Errorf("CreateNewUserNoneRoot: " + err.Error())
+		// Die Sitzung wird wieder geschlossen
+		CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 9: "+err.Error()))
+
+		// Es wird ein fehler zurückgegeben
+		return &json2.Error{Code: 400, Message: "internal error"}
 	}
 
 	// Die Antwort wird gebaut
@@ -270,7 +332,7 @@ func (t *User) CreateNewEMailBasedUserNoneRoot(r *http.Request, args *base.Creat
 	// Sofern für diesen Benutzer eine neue Sitzung erstellt werden soll, wird diese nun erstellt
 	if create_session_id || get_service_session_id {
 		// Es wird versucht die Sitzung in der Datenbank zu öffnen
-		ses, err := t.Database.CreateNewUserSessionByUID(db_result.UserId, directory_service_user_io, *source_meta_data, true)
+		ses, err := t.Database.CreateNewUserSessionByUID(db_result.UserId, directory_service_user_io, *source_meta_data)
 		if err != nil {
 			// Es wird festgelegt dass keine SessionIds vorhanden sind
 			response_data.HasServiceSideSessionId = false
@@ -278,6 +340,10 @@ func (t *User) CreateNewEMailBasedUserNoneRoot(r *http.Request, args *base.Creat
 
 			// Der Fehler wird an den Server übermittelt
 			response_data.Errors = append(response_data.Errors, err.Error())
+
+			// Die Sitzung wird wieder geschlossen
+			warning := fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 10: " + err.Error()).Error()
+			CloseSessionRequest(t.Database, r, source_meta_data, &warning, nil)
 
 			// Die Daten werden zurückgegeben
 			*result = *response_data
@@ -305,6 +371,10 @@ func (t *User) CreateNewEMailBasedUserNoneRoot(r *http.Request, args *base.Creat
 				// Der Fehler wird an den Server übermittelt
 				response_data.Errors = append(response_data.Errors, err.Error())
 
+				// Die Sitzung wird wieder geschlossen
+				warning := fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 11: " + err.Error()).Error()
+				CloseSessionRequest(t.Database, r, source_meta_data, &warning, nil)
+
 				// Die Daten werden zurückgegeben
 				*result = *response_data
 				return nil
@@ -320,6 +390,10 @@ func (t *User) CreateNewEMailBasedUserNoneRoot(r *http.Request, args *base.Creat
 				// Der Fehler wird an den Server übermittelt
 				response_data.Errors = append(response_data.Errors, err.Error())
 
+				// Die Sitzung wird wieder geschlossen
+				warning := fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 12: " + err.Error()).Error()
+				CloseSessionRequest(t.Database, r, source_meta_data, &warning, nil)
+
 				// Die Daten werden zurückgegeben
 				*result = *response_data
 				return nil
@@ -332,6 +406,9 @@ func (t *User) CreateNewEMailBasedUserNoneRoot(r *http.Request, args *base.Creat
 			response_data.HasClientSideSession = false
 		}
 
+		// Die Sitzung wird wieder geschlossen
+		CloseSessionRequest(t.Database, r, source_meta_data, nil, nil)
+
 		// Die Daten werden zurückgegeben
 		*result = *response_data
 		return nil
@@ -340,6 +417,9 @@ func (t *User) CreateNewEMailBasedUserNoneRoot(r *http.Request, args *base.Creat
 	// Es wird festgelegt dass keine SessionIds vorhanden sind
 	response_data.HasServiceSideSessionId = false
 	response_data.HasClientSideSession = false
+
+	// Die Sitzung wird wieder geschlossen
+	CloseSessionRequest(t.Database, r, source_meta_data, nil, nil)
 
 	// Die Daten für die Sitzung werden zurückgegeben
 	*result = *response_data

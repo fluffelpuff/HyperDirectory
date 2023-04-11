@@ -14,7 +14,7 @@ import (
 /*
 Wird verwendet um einen Request in die Datenbank zu schreiben
 */
-func (obj *Database) OpenNewRequestEntryAndGetId(request_data *base.RequestMetaData, function_name string, proxy_pass bool) (*base.RequestMetaDataDbEntry, error) {
+func (obj *Database) OpenNewRequestEntryAndGetId(request_data *base.RequestMetaData, function_name string, proxy_pass bool) (*base.RequestMetaDataSession, error) {
 	// Der Threadlock wird ausgeführt
 	obj.lock.Lock()
 
@@ -36,7 +36,7 @@ func (obj *Database) OpenNewRequestEntryAndGetId(request_data *base.RequestMetaD
 	}
 
 	// Das Rückgabeobjekt wird erstellt
-	resturn := base.RequestMetaDataDbEntry{DbEntryId: add_req_id}
+	resturn := base.RequestMetaDataSession{DbEntryId: add_req_id}
 
 	// Der ThreadLock wird freigegeben
 	obj.lock.Unlock()
@@ -48,7 +48,7 @@ func (obj *Database) OpenNewRequestEntryAndGetId(request_data *base.RequestMetaD
 /*
 Wird verwendet um einen Dienste API-Benutzer zu Authentifizieren
 */
-func (obj *Database) ValidateDirectoryAPIUserAndGetProcessId(verify_cert_fingerprint_unp string, user_agent string, host string, accept string, encodings string, connection string, clen string, content_type string, source_ip string, source_port string, function_name string, source_meta_data base.RequestMetaDataDbEntry) (bool, *base.DirectoryServiceProcess, error) {
+func (obj *Database) ValidateDirectoryAPIUserAndGetProcessId(verify_cert_fingerprint_unp string, user_agent string, host string, accept string, encodings string, connection string, clen string, content_type string, source_ip string, source_port string, function_name string, session_req base.RequestMetaDataSession) (bool, *base.DirectoryServiceProcess, error) {
 	// Es wird geprüft ob der Token 64 Zeichen lang ist
 	is_validate_finger_print, pre_finger_print := validateCertFingerprintDBEntry(verify_cert_fingerprint_unp)
 	if !is_validate_finger_print {
@@ -77,7 +77,7 @@ func (obj *Database) ValidateDirectoryAPIUserAndGetProcessId(verify_cert_fingerp
 	current_time := time.Now()
 
 	// Es wird ein Eintrag für diesen Request erstellt
-	request_add_result, err := obj.db.Exec(SQLITE_WRITE_NEW_SESSION_DATA, dsauid, user_agent, host, accept, encodings, connection, clen, content_type, source_ip, source_port, function_name, current_time.Unix(), source_meta_data.DbEntryId)
+	request_add_result, err := obj.db.Exec(SQLITE_WRITE_NEW_SESSION_DATA, dsauid, user_agent, host, accept, encodings, connection, clen, content_type, source_ip, source_port, function_name, current_time.Unix(), session_req.DbEntryId)
 	if err != nil {
 		obj.lock.Unlock()
 		return false, nil, fmt.Errorf("ValidateDirectoryAPIUserAndGetProcessId: " + err.Error())
@@ -180,7 +180,7 @@ func _checkUserDataAvailability(db *sql.DB, prep_email string, prep_master_pkey 
 	return total_active_mails == 0, total_active_pk_mater_keys == 0 && total_active_pk_master_master_keys == 0, total_active_owner_pk_keys == 0 && total_active_pk_owner_master_keys == 0, nil
 }
 
-func (obj *Database) CheckUserDataAvailability(email string, pkey_master string, pkey_owner string, service_data *base.DirectoryServiceProcess, source_meta_data base.RequestMetaDataDbEntry, is_primary_fnc bool) (bool, bool, bool, error) {
+func (obj *Database) CheckUserDataAvailability(email string, pkey_master string, pkey_owner string, service_data *base.DirectoryServiceProcess, session_req base.RequestMetaDataSession, is_primary_fnc bool) (bool, bool, bool, error) {
 	// Es wird geprüft ob das Datenbank Objekt verfügbar ist
 	if obj.db == nil {
 		return false, false, false, fmt.Errorf("CheckUserDataAvailability: internal db error")
@@ -350,7 +350,7 @@ func (obj *Database) GetAllMetaUserGroupsByDirectoryApiUser(filter_mode base.Get
 /*
 Wird verwendet um einen neuen Benutzer zu registrieren
 */
-func (obj *Database) CreateNewUserNoneRoot(cred_owner_pkey string, enc_master_key string, master_pkey string, email_address string, encrypted_password string, gender string, first_name []string, last_name []string, set_groups []*base.UserGroupDirectoryApiUser, service_data *base.DirectoryServiceProcess, source_meta_data base.RequestMetaDataDbEntry) (*base.NewUserDbResult, error) {
+func (obj *Database) CreateNewUserNoneRoot(cred_owner_pkey string, enc_master_key string, master_pkey string, email_address string, encrypted_password string, gender string, first_name []string, last_name []string, set_groups []*base.UserGroupDirectoryApiUser, service_data *base.DirectoryServiceProcess, session_req base.RequestMetaDataSession) (*base.NewUserDbResult, error) {
 	// Es wird geprüft ob das Datenbank Objekt verfügbar ist
 	if obj.db == nil {
 		return nil, fmt.Errorf("CreateNewUserNoneRoot: internal db error")
@@ -411,7 +411,7 @@ func (obj *Database) CreateNewUserNoneRoot(cred_owner_pkey string, enc_master_ke
 	}
 
 	// Es wird ein neuer Benutzer in der Datenbank angelegt
-	root_result, err := obj.db.Exec(SQLITE_CREATE_NEW_NONE_ROOT_USER, current_time.Unix(), 1, prep_master_pkey, gender, -2, source_meta_data.DbEntryId, service_data.DbServiceUserId)
+	root_result, err := obj.db.Exec(SQLITE_CREATE_NEW_NONE_ROOT_USER, current_time.Unix(), 1, prep_master_pkey, gender, -2, session_req.DbEntryId, service_data.DbServiceUserId)
 	if err != nil {
 		obj.lock.Unlock()
 		return nil, fmt.Errorf("CreateNewUserNoneRoot: " + err.Error())
@@ -425,7 +425,7 @@ func (obj *Database) CreateNewUserNoneRoot(cred_owner_pkey string, enc_master_ke
 	}
 
 	// Die Email Adresse wird hinzugefügt
-	email_writing_result, err := obj.db.Exec(SQLITE_WRITE_EMAIL_ADDRESS, user_id, prep_email, e_match_hash, 1, current_time.Unix(), service_data.DbServiceUserId, source_meta_data.DbEntryId, -2)
+	email_writing_result, err := obj.db.Exec(SQLITE_WRITE_EMAIL_ADDRESS, user_id, prep_email, e_match_hash, 1, current_time.Unix(), service_data.DbServiceUserId, session_req.DbEntryId, -2)
 	if err != nil {
 		obj.lock.Unlock()
 		return nil, fmt.Errorf("CreateNewUserNoneRoot: " + err.Error())
@@ -439,14 +439,14 @@ func (obj *Database) CreateNewUserNoneRoot(cred_owner_pkey string, enc_master_ke
 	}
 
 	// Die Login Credentials werden hinzugefügt
-	_, err = obj.db.Exec(SQLITE_WRITE_LOGIN_CREDENTIALS, user_id, 1, email_id, current_time.Unix(), cred_owner_pkey, encrypted_password, enc_master_key, service_data.DbServiceUserId, source_meta_data.DbEntryId, -2)
+	_, err = obj.db.Exec(SQLITE_WRITE_LOGIN_CREDENTIALS, user_id, 1, email_id, current_time.Unix(), cred_owner_pkey, encrypted_password, enc_master_key, service_data.DbServiceUserId, session_req.DbEntryId, -2)
 	if err != nil {
 		obj.lock.Unlock()
 		return nil, fmt.Errorf("CreateNewUserNoneRoot: " + err.Error())
 	}
 
 	// Der Benutzer wird dem Aktuellen Dienst zugeordnet
-	_, err = obj.db.Exec(SQLITE_WRITE_SET_USER_MEMBERSHIP_OF_DIRECOTRY_SERVICE, user_id, service_data.DbServiceId, 1, current_time.Unix(), service_data.DbServiceUserId, source_meta_data.DbEntryId, -2)
+	_, err = obj.db.Exec(SQLITE_WRITE_SET_USER_MEMBERSHIP_OF_DIRECOTRY_SERVICE, user_id, service_data.DbServiceId, 1, current_time.Unix(), service_data.DbServiceUserId, session_req.DbEntryId, -2)
 	if err != nil {
 		obj.lock.Unlock()
 		return nil, fmt.Errorf("CreateNewUserNoneRoot: " + err.Error())
@@ -454,7 +454,7 @@ func (obj *Database) CreateNewUserNoneRoot(cred_owner_pkey string, enc_master_ke
 
 	// Die Verfügbaren Vornamen werden in die Datenbank geschrieben
 	for i := range first_name {
-		_, err := obj.db.Exec(SQLITE_WRITE_FIRSTNAME, first_name[i], current_time.Unix(), i, user_id, 1, service_data.DbServiceUserId, source_meta_data.DbEntryId, -2)
+		_, err := obj.db.Exec(SQLITE_WRITE_FIRSTNAME, first_name[i], current_time.Unix(), i, user_id, 1, service_data.DbServiceUserId, session_req.DbEntryId, -2)
 		if err != nil {
 			obj.lock.Unlock()
 			return nil, fmt.Errorf("CreateNewUserNoneRoot: " + err.Error())
@@ -463,7 +463,7 @@ func (obj *Database) CreateNewUserNoneRoot(cred_owner_pkey string, enc_master_ke
 
 	// Die Verfügbaren Nachnamen werden in die Datenbank geschrieben
 	for i := range last_name {
-		_, err := obj.db.Exec(SQLITE_WRITE_LASTNAME, last_name[i], current_time.Unix(), 1, user_id, i, service_data.DbServiceUserId, source_meta_data.DbEntryId, -2)
+		_, err := obj.db.Exec(SQLITE_WRITE_LASTNAME, last_name[i], current_time.Unix(), 1, user_id, i, service_data.DbServiceUserId, session_req.DbEntryId, -2)
 		if err != nil {
 			obj.lock.Unlock()
 			return nil, fmt.Errorf("CreateNewUserNoneRoot: " + err.Error())
@@ -474,7 +474,7 @@ func (obj *Database) CreateNewUserNoneRoot(cred_owner_pkey string, enc_master_ke
 	activated_groups := []string{}
 	for i := range set_groups {
 		activated_groups = append(activated_groups, set_groups[i].Name)
-		_, err = obj.db.Exec(SQLITE_WRITE_USER_API_USER_SET_GROUP, set_groups[i].Id, user_id, 1, current_time.Unix(), set_groups[i].DirectoryServiceId, service_data.DbServiceUserId, source_meta_data.DbEntryId, -2)
+		_, err = obj.db.Exec(SQLITE_WRITE_USER_API_USER_SET_GROUP, set_groups[i].Id, user_id, 1, current_time.Unix(), set_groups[i].DirectoryServiceId, service_data.DbServiceUserId, session_req.DbEntryId, -2)
 		if err != nil {
 			obj.lock.Unlock()
 			return nil, fmt.Errorf("CreateNewUserNoneRoot: " + err.Error())
@@ -492,7 +492,7 @@ func (obj *Database) CreateNewUserNoneRoot(cred_owner_pkey string, enc_master_ke
 /*
 Wird verwendet um eine neue Session anhand der Nutzerdaten zu erstellen
 */
-func (obj *Database) CreateNewUserSessionByUID(userid int64, service_data *base.DirectoryServiceProcess, source_meta_data base.RequestMetaDataDbEntry, is_primary bool) (*base.UserSessionDbResult, error) {
+func (obj *Database) CreateNewUserSessionByUID(userid int64, service_data *base.DirectoryServiceProcess, session_req base.RequestMetaDataSession) (*base.UserSessionDbResult, error) {
 	// Es wird geprüft ob das Datenbank Objekt verfügbar ist
 	if obj.db == nil {
 		return nil, fmt.Errorf("CreateNewUserSessionByUID: internal db error")
@@ -544,7 +544,7 @@ func (obj *Database) CreateNewUserSessionByUID(userid int64, service_data *base.
 	}
 
 	// Es wird eine neue Sitzung für den Aktuellen Benutzer erstellt
-	root_result, err := obj.db.Exec(SQLITE_WRITE_CREATE_USER_SESSION, userid, service_data.DbServiceId, -2, current_time.Unix(), client_session_key_pair.PublicKey, server_session_key_pair.PrivateKey, fingerprint, service_session_id, service_data.DbServiceUserId, source_meta_data.DbEntryId, -2)
+	root_result, err := obj.db.Exec(SQLITE_WRITE_CREATE_USER_SESSION, userid, service_data.DbServiceId, -2, current_time.Unix(), client_session_key_pair.PublicKey, server_session_key_pair.PrivateKey, fingerprint, service_session_id, service_data.DbServiceUserId, session_req.DbEntryId, -2)
 	if err != nil {
 		obj.lock.Unlock()
 		return nil, fmt.Errorf("CreateNewUserSessionByUID: " + err.Error())
@@ -572,6 +572,123 @@ func (obj *Database) CreateNewUserSessionByUID(userid int64, service_data *base.
 }
 
 /*
+Wird verwendet um einen Offenen Session Request in der Datenbank zu schlißen
+*/
+func (obj *Database) CloseEntrySessionRequest(request_session *base.RequestMetaDataSession, warning *string, errort error) error {
+	// Es wird geprüft ob das Datenbank Objekt verfügbar ist
+	if obj.db == nil {
+		return fmt.Errorf("CloseEntrySessionRequest: internal db error")
+	}
+
+	// Die Aktuelle sowie die Ablaufzeit wird ermittelt
+	current_time := time.Now()
+
+	// Der Threadlock wird verwendet
+	obj.lock.Lock()
+
+	// Es wird geprüft ob die Sitzung bereits geschlossen wurde, wenn ja wird der Vorgang abgebrochen
+	var is_open string
+	if err := obj.db.QueryRow(SQLITE_GET_META_REQUEST_CLOSED, request_session.DbEntryId).Scan(&is_open); err != nil {
+		obj.lock.Unlock()
+		return err
+	}
+	if is_open != "OPEN" {
+		obj.lock.Unlock()
+		return fmt.Errorf("CloseEntrySessionRequest: ")
+	}
+
+	// Die Request Session wird ohne fehler und oder warnung geschlossen
+	if warning == nil && errort == nil {
+		_, err := obj.db.Exec(SQLITE_WRITE_REQUEST_SESSION_CLOSE, request_session.DbEntryId, current_time.Unix())
+		if err != nil {
+			obj.lock.Unlock()
+			return fmt.Errorf("CloseEntrySessionRequest: " + err.Error())
+		}
+
+		obj.lock.Unlock()
+		return nil
+	}
+
+	// Es wird ermittelt ob eine Warnung oder einen Fehler gibt
+	warning_str, errors_str := "", ""
+	if warning != nil {
+		warning_str = *warning
+	}
+	if errort != nil {
+		errors_str = errort.Error()
+	}
+
+	// Die Daten werden in die Datenbank geschrieben
+	_, err := obj.db.Exec(SQLITE_WRITE_REQUEST_SESSION_CLOSE_WITH_WARNING_OR_ERROR, request_session.DbEntryId, warning_str, errors_str, current_time.Unix())
+	if err != nil {
+		obj.lock.Unlock()
+		return fmt.Errorf("CloseEntrySessionRequest: " + err.Error())
+	}
+
+	// Der Threadlock wird freigegeben
+	obj.lock.Unlock()
+
+	// Der Vorgang wurde erfolgreich durchgeführt
+	return nil
+}
+
+/*
+Wird verwendet um den Aktuellen Login Process Hash abzurufen
+*/
+func (obj *Database) CreateNewLoginProcessKey(public_login_cred_key string, public_client_session_key string, service_data *base.DirectoryServiceProcess, session_req base.RequestMetaDataSession) (*base.LoginProcessKeyCreationDbResult, error) {
+	// Es wird geprüft ob das Datenbank Objekt verfügbar ist
+	if obj.db == nil {
+		return nil, fmt.Errorf("CreateNewLoginProcessKey: internal db error")
+	}
+
+	// Die Aktuelle sowie die Ablaufzeit wird ermittelt
+	current_time := time.Now().Unix()
+
+	// Es wird ein neues Schlüsselpaar erzeugt, dieses Schlüsselpaar wird verwendet um den LoginProzess abzuschlißen
+	key_pair, err := hdcrypto.CreateRandomKeypair()
+	if err != nil {
+		return nil, fmt.Errorf("CreateNewLoginProcessKey: " + err.Error())
+	}
+
+	// Der Threadlock wird verwendet
+	obj.lock.Lock()
+
+	// Es wird geprüft ob es einen Benutzer mit dem Entsprechenden Öffentlichen Credtials Key gibt
+	var is_open string
+	if err := obj.db.QueryRow(SQLITE_GET_LOGIN_CREDENTIALS_ACCEPTED_BY_PUB_KEY, session_req.DbEntryId).Scan(&is_open); err != nil {
+		obj.lock.Unlock()
+		return nil, err
+	}
+	if is_open != "OPEN" {
+		obj.lock.Unlock()
+		return nil, fmt.Errorf("CloseEntrySessionRequest: ")
+	}
+
+	// Es wird geprüft ob der OneTimeKey bereits verwendet wird
+	var otk_is_available string
+	if err := obj.db.QueryRow(SQLITE_GET_ONE_TIME_SESSION_CREATION_KEY_AVAIL, session_req.DbEntryId).Scan(&otk_is_available); err != nil {
+		obj.lock.Unlock()
+		return nil, err
+	}
+	if is_open != "OPEN" {
+		obj.lock.Unlock()
+		return nil, fmt.Errorf("CloseEntrySessionRequest: ")
+	}
+
+	// Es wird ein neuer Sitzungseintrag in der Datenbank erzeugt
+	_, err = obj.db.Exec(SQLITE_WRITE_NEW_LOGIN_PROCESS, current_time)
+	if err != nil {
+		obj.lock.Unlock()
+		return nil, fmt.Errorf("CreateNewLoginProcessKey: " + err.Error())
+	}
+
+	// Der Threadlock wird freigegeben
+	obj.lock.Unlock()
+
+	return nil, nil
+}
+
+/*
 Gibt an ob die Login Credentials korrekt sind
 */
 func (obj *Database) VerifyLoginCredentials(public_login_cred_key string, req_metadata *base.RequestMetaData) bool {
@@ -582,13 +699,6 @@ func (obj *Database) VerifyLoginCredentials(public_login_cred_key string, req_me
 
 	// Es wird geprüft ob die SQLite Datenbank vorhanden ist
 	return true
-}
-
-/*
-Wird verwendet um den Aktuellen Login Process Hash abzurufen
-*/
-func (obj *Database) GetUserLoginProcessKey(public_login_cred_key string, req_metadata *base.RequestMetaData) (string, error) {
-	return "nil", nil
 }
 
 /*
