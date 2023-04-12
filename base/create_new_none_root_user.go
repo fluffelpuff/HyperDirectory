@@ -8,6 +8,7 @@ type CreateNewUserNoneRoot struct {
 	CredentialsOwnerSignature *string
 	CredentialsOwnerPublicKey *string
 	EncryptedUserPassword     *string
+	CreateClientSession       *bool
 	MasterKeySignature        *string
 	EncryptedMasterKey        *string
 	PublicMasterKey           *string
@@ -16,7 +17,6 @@ type CreateNewUserNoneRoot struct {
 	LastName                  []string
 	Gender                    *string
 	MetaData                  *RequestMetaData
-	Options                   []string
 }
 
 func (t *CreateNewUserNoneRoot) PreValidate() bool {
@@ -34,6 +34,9 @@ func (t *CreateNewUserNoneRoot) PreValidate() bool {
 		return false
 	}
 	if t.MasterKeySignature == nil {
+		return false
+	}
+	if t.CreateClientSession == nil {
 		return false
 	}
 	if t.EncryptedMasterKey == nil {

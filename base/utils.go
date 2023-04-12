@@ -4,7 +4,6 @@ import (
 	"net/mail"
 	"strings"
 
-	"github.com/fxamacker/cbor/v2"
 	"github.com/google/uuid"
 )
 
@@ -34,13 +33,4 @@ func IsValidateHumanName(u string) bool {
 
 func IsValidateGroupName(u string) bool {
 	return true
-}
-
-func (t *EncryptedSessionCapsule) ToBytes() ([]byte, error) {
-	encoded, err := cbor.Marshal(t)
-	if err != nil {
-		return nil, err
-	}
-
-	return encoded, nil
 }

@@ -245,6 +245,7 @@ CREATE TABLE "user_directory_service_members" (
 	"udsmid"	INTEGER,
 	"user_id"	INTEGER,
 	"directory_service_id"	INTEGER,
+	"user_directory_id"	TEXT,
 	"active"	INTEGER,
 	"created_at"	INTEGER,
 	"created_by_service_id_user"	INTEGER,
@@ -258,13 +259,12 @@ CREATE TABLE "user_directory_service_members" (
 var sql_create_user_session_table = `
 CREATE TABLE "user_sessions" (
 	"usid"	INTEGER,
-	"user_id"	INTEGER,
 	"service_id"	INTEGER,
+	"user_id"	INTEGER,
 	"device_id"	INTEGER,
 	"created_at"	INTEGER,
 	"client_pkey"	TEXT,
 	"server_privkey"	INTEGER,
-	"service_session_id"	TEXT,
 	"session_id_chsum"	INTEGER UNIQUE,
 	"created_by_service_id_user"	INTEGER,
 	"created_by_request_id"	INTEGER,
@@ -273,15 +273,79 @@ CREATE TABLE "user_sessions" (
 );
 `
 
-// Schleißt einen Datenbank request
+// Erstellt die Tabelle für das Schließen von Requests
 var sql_create_meta_request_closed_table = `
-CREATE TABLE "request_stops" (
+CREATE TABLE "request_closers" (
 	"rstid"	INTEGER,
 	"reqid"	INTEGER,
 	"error"	TEXT,
 	"warning"	TEXT,
 	"created_at"	INTEGER,
 	PRIMARY KEY("rstid" AUTOINCREMENT)
+);
+`
+
+// Erstellt die Tabelle für das Starten von Benutzer Sitzungen innerhalb eines Dienstes
+var sql_create_user_service_sessions = `
+CREATE TABLE "user_session_starting_request" (
+	"ussr"	INTEGER,
+	"user_id"	INTEGER,
+	"service_id"	INTEGER,
+	"one_time_client_session_pkey"	TEXT,
+	"one_time_server_session_privkey"	TEXT,
+	"created_at"	INTEGER,
+	"created_by_service_id_user"	INTEGER,
+	"created_by_request_id"	INTEGER,
+	"created_by_user_id"	INTEGER,
+	PRIMARY KEY("ussr" AUTOINCREMENT)
+);
+`
+
+// Erstellt die Tabelle für die Directory Service Filter nach Nutzer
+var sqlite_create_user_directory_filter_table = `
+CREATE TABLE "user_directory_service_filter" (
+	"udsfid"	INTEGER,
+	"filter"	TEXT,
+	"directory_service_id"	INTEGER,
+	"directory_service_api_user_id"	INTEGER DEFAULT -1,
+	"created_at"	INTEGER,
+	"active"	INTEGER,
+	"created_by_service_id_user"	INTEGER,
+	"created_by_request_id"	INTEGER,
+	"created_by_user_id"	INTEGER,
+	PRIMARY KEY("udsfid" AUTOINCREMENT)
+);
+`
+
+// Erstellt die Tabelle für die Einzelnene Benutzer Rechte
+var sqlite_create_user_permissions_table = `
+CREATE TABLE "user_permissions" (
+	"upid"	INTEGER,
+	"permission"	TEXT,
+	"user_id"	INTEGER,
+	"directory_service_id"	INTEGER,
+	"active"	INTEGER,
+	"created_at"	INTEGER,
+	"created_by_service_id_user"	INTEGER,
+	"created_by_request_id"	INTEGER,
+	"created_by_user_id"	INTEGER,
+	PRIMARY KEY("upid" AUTOINCREMENT)
+);
+`
+
+// Erstellt die Tabelle für Grupppenrechte
+var sqlite_create_user_group_permissions_table = `
+CREATE TABLE "user_group_permissions" (
+	"ugpid"	INTEGER,
+	"group_id"	INTEGER,
+	"directory_service_id"	INTEGER,
+	"name"	INTEGER,
+	"created_at"	INTEGER,
+	"active"	INTEGER,
+	"created_by_service_id_user"	INTEGER,
+	"created_by_request_id"	INTEGER,
+	"created_by_user_id"	INTEGER,
+	PRIMARY KEY("ugpid" AUTOINCREMENT)
 );
 `
 
@@ -312,7 +376,9 @@ func CreateNewSQLiteBasedDatabase(file_path string, local_priv_key *string) (*Da
 	login_creds, users, user_groups, user_group_member, first_names := false, false, false, false, false
 	key_pairs, last_names, directory_services_api_user_requests := false, false, false
 	directory_service_api_user_permissions, requests, user_groups_directory_services_accesses := false, false, false
-	user_groups_directory_service_api_user_premissions, user_sessions, request_stops := false, false, false
+	user_groups_directory_service_api_user_premissions, user_sessions, request_closers := false, false, false
+	user_session_starting_request, user_directory_service_filter, user_permissions := false, false, false
+	user_group_permissions := false
 	for response.Next() {
 		// Der Name wird geprüft
 		err = response.Scan(&name)
@@ -353,8 +419,16 @@ func CreateNewSQLiteBasedDatabase(file_path string, local_priv_key *string) (*Da
 			user_directory_service_members = true
 		} else if name == "user_sessions" {
 			user_sessions = true
-		} else if name == "request_stops" {
-			request_stops = true
+		} else if name == "request_closers" {
+			request_closers = true
+		} else if name == "user_session_starting_request" {
+			user_session_starting_request = true
+		} else if name == "user_directory_service_filter" {
+			user_directory_service_filter = true
+		} else if name == "user_permissions" {
+			user_permissions = true
+		} else if name == "user_group_permissions" {
+			user_group_permissions = true
 		}
 	}
 
@@ -363,8 +437,44 @@ func CreateNewSQLiteBasedDatabase(file_path string, local_priv_key *string) (*Da
 		return nil, fmt.Errorf("CreateNewSQLiteBasedDatabase: " + db_err.Error())
 	}
 
+	// Sollte keine User Groups Permissions Tabelle vorhanden sein, wird diese hinzugefügt
+	if !user_group_permissions {
+		_, err = db.Exec(sqlite_create_user_group_permissions_table)
+		if err != nil {
+			return nil, fmt.Errorf("CreateNewSQLiteBasedDatabase: " + err.Error())
+		}
+		fmt.Println("User Group Permissions table created")
+	}
+
+	// Sollte die Users Permissions Tabelle nicht vorhanden sein, wird diese hinzugefügt
+	if !user_permissions {
+		_, err = db.Exec(sqlite_create_user_permissions_table)
+		if err != nil {
+			return nil, fmt.Errorf("CreateNewSQLiteBasedDatabase: " + err.Error())
+		}
+		fmt.Println("User Permissions table created")
+	}
+
+	// Sollte die User Directory Service Filter Tabelle nicht vorhanden sein wird diese erzeugt
+	if !user_directory_service_filter {
+		_, err = db.Exec(sqlite_create_user_directory_filter_table)
+		if err != nil {
+			return nil, fmt.Errorf("CreateNewSQLiteBasedDatabase: " + err.Error())
+		}
+		fmt.Println("User Directory Service table created")
+	}
+
+	// Sollte die User Session Starting Request Tabelle nicht vorhanden sein wird diese erzeugt
+	if !user_session_starting_request {
+		_, err = db.Exec(sql_create_user_service_sessions)
+		if err != nil {
+			return nil, fmt.Errorf("CreateNewSQLiteBasedDatabase: " + err.Error())
+		}
+		fmt.Println("User Session Starting Request table created")
+	}
+
 	// Sollte die Request Stops Tabelle nicht vorhanden sein wird diese erzeugt
-	if !request_stops {
+	if !request_closers {
 		_, err = db.Exec(sql_create_meta_request_closed_table)
 		if err != nil {
 			return nil, fmt.Errorf("CreateNewSQLiteBasedDatabase: " + err.Error())

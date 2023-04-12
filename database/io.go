@@ -180,7 +180,7 @@ func _checkUserDataAvailability(db *sql.DB, prep_email string, prep_master_pkey 
 	return total_active_mails == 0, total_active_pk_mater_keys == 0 && total_active_pk_master_master_keys == 0, total_active_owner_pk_keys == 0 && total_active_pk_owner_master_keys == 0, nil
 }
 
-func (obj *Database) CheckUserDataAvailability(email string, pkey_master string, pkey_owner string, service_data *base.DirectoryServiceProcess, session_req base.RequestMetaDataSession, is_primary_fnc bool) (bool, bool, bool, error) {
+func (obj *Database) CheckUserDataAvailability(email string, pkey_master string, pkey_owner string, service_data *base.DirectoryServiceProcess, session_req base.RequestMetaDataSession) (bool, bool, bool, error) {
 	// Es wird geprüft ob das Datenbank Objekt verfügbar ist
 	if obj.db == nil {
 		return false, false, false, fmt.Errorf("CheckUserDataAvailability: internal db error")
@@ -350,7 +350,7 @@ func (obj *Database) GetAllMetaUserGroupsByDirectoryApiUser(filter_mode base.Get
 /*
 Wird verwendet um einen neuen Benutzer zu registrieren
 */
-func (obj *Database) CreateNewUserNoneRoot(cred_owner_pkey string, enc_master_key string, master_pkey string, email_address string, encrypted_password string, gender string, first_name []string, last_name []string, set_groups []*base.UserGroupDirectoryApiUser, service_data *base.DirectoryServiceProcess, session_req base.RequestMetaDataSession) (*base.NewUserDbResult, error) {
+func (obj *Database) CreateNewUserNoneRoot(cred_owner_pkey string, enc_master_key string, master_pkey string, email_address string, encrypted_password string, gender string, first_name []string, last_name []string, service_data *base.DirectoryServiceProcess, session_req base.RequestMetaDataSession) (*base.NewUserDbResult, error) {
 	// Es wird geprüft ob das Datenbank Objekt verfügbar ist
 	if obj.db == nil {
 		return nil, fmt.Errorf("CreateNewUserNoneRoot: internal db error")
@@ -385,16 +385,8 @@ func (obj *Database) CreateNewUserNoneRoot(cred_owner_pkey string, enc_master_ke
 	// Es wird ein Hash aus der E-Mail Adresse erstellt
 	e_match_hash := hdsha3.ComputeSha256(prep_email)
 
-	// Es wird geprüft ob diesem Benutzer Gruppen Zugeordnet werden sollen, wenn ja wird geprüft ob der Service API User dafür berechtigt ist diesem Benutzer einer neuem Gruppe zuzuordnen
-	// Es wird geprüft ob der Service Benutezr berechtigt ist diesem Benutzer
-	for i := range set_groups {
-		if set_groups[i].DirectoryServiceId != service_data.DbServiceId {
-			return nil, fmt.Errorf("CreateNewUserNoneRoot: service api user dosent allowed to set user to group, 1")
-		}
-		if !set_groups[i].SetGroupMembershipPremission {
-			return nil, fmt.Errorf("CreateNewUserNoneRoot: service api user dosent allowed to set user to group, 2")
-		}
-	}
+	// Es wird eine RandomId erzeugt, diese Id ist nur dem Dienst zugänglich in dem sich dieser Benutzer gerade
+	directory_user_id := hdcrypto.RandomHex32Secret()
 
 	// Der Threadlock wird verwendet
 	obj.lock.Lock()
@@ -446,7 +438,7 @@ func (obj *Database) CreateNewUserNoneRoot(cred_owner_pkey string, enc_master_ke
 	}
 
 	// Der Benutzer wird dem Aktuellen Dienst zugeordnet
-	_, err = obj.db.Exec(SQLITE_WRITE_SET_USER_MEMBERSHIP_OF_DIRECOTRY_SERVICE, user_id, service_data.DbServiceId, 1, current_time.Unix(), service_data.DbServiceUserId, session_req.DbEntryId, -2)
+	_, err = obj.db.Exec(SQLITE_WRITE_SET_USER_MEMBERSHIP_OF_DIRECOTRY_SERVICE, user_id, service_data.DbServiceId, directory_user_id, 1, current_time.Unix(), service_data.DbServiceUserId, session_req.DbEntryId, -2)
 	if err != nil {
 		obj.lock.Unlock()
 		return nil, fmt.Errorf("CreateNewUserNoneRoot: " + err.Error())
@@ -470,22 +462,11 @@ func (obj *Database) CreateNewUserNoneRoot(cred_owner_pkey string, enc_master_ke
 		}
 	}
 
-	// Der Benutzer wird den Einzelenen Gruppen zugewiesen sofern vorhanden
-	activated_groups := []string{}
-	for i := range set_groups {
-		activated_groups = append(activated_groups, set_groups[i].Name)
-		_, err = obj.db.Exec(SQLITE_WRITE_USER_API_USER_SET_GROUP, set_groups[i].Id, user_id, 1, current_time.Unix(), set_groups[i].DirectoryServiceId, service_data.DbServiceUserId, session_req.DbEntryId, -2)
-		if err != nil {
-			obj.lock.Unlock()
-			return nil, fmt.Errorf("CreateNewUserNoneRoot: " + err.Error())
-		}
-	}
-
 	// Der Threadlock wird freigegeben
 	obj.lock.Unlock()
 
 	// Die Daten werden zusammengefasst und zurückgegeben
-	return_value := base.NewUserDbResult{UserId: user_id, IsRoot: false, UserGroups: activated_groups}
+	return_value := base.NewUserDbResult{UserId: user_id, IsRoot: false, UserDirectoryId: directory_user_id}
 	return &return_value, nil
 }
 
@@ -526,9 +507,6 @@ func (obj *Database) CreateNewUserSessionByUID(userid int64, service_data *base.
 	// Es wird ein 64Bit Fingerprint aus der SessionId erstellt
 	fingerprint := hdsha3.ComputeSha64Int64(server_session_key_pair.PublicKey)
 
-	// Die SessionId für den Service wird erstellt
-	service_session_id := hdcrypto.RandomBase32Secret()
-
 	// Der Threadlock wird ausgeführt
 	obj.lock.Lock()
 
@@ -544,7 +522,7 @@ func (obj *Database) CreateNewUserSessionByUID(userid int64, service_data *base.
 	}
 
 	// Es wird eine neue Sitzung für den Aktuellen Benutzer erstellt
-	root_result, err := obj.db.Exec(SQLITE_WRITE_CREATE_USER_SESSION, userid, service_data.DbServiceId, -2, current_time.Unix(), client_session_key_pair.PublicKey, server_session_key_pair.PrivateKey, fingerprint, service_session_id, service_data.DbServiceUserId, session_req.DbEntryId, -2)
+	root_result, err := obj.db.Exec(SQLITE_WRITE_CREATE_USER_SESSION, userid, service_data.DbServiceId, -2, current_time.Unix(), client_session_key_pair.PublicKey, server_session_key_pair.PrivateKey, fingerprint, service_data.DbServiceUserId, session_req.DbEntryId, -2)
 	if err != nil {
 		obj.lock.Unlock()
 		return nil, fmt.Errorf("CreateNewUserSessionByUID: " + err.Error())
@@ -565,7 +543,6 @@ func (obj *Database) CreateNewUserSessionByUID(userid int64, service_data *base.
 	return_value.SessionDbId = session_db_id
 	return_value.ClientsidePrivKey = client_session_key_pair.PrivateKey
 	return_value.ClintsidePkey = server_session_key_pair.PublicKey
-	return_value.ServiceSideSessionId = service_session_id
 
 	// der Vorgang wurde erfolgreich durchgeführt
 	return return_value, nil
@@ -633,12 +610,92 @@ func (obj *Database) CloseEntrySessionRequest(request_session *base.RequestMetaD
 }
 
 /*
+Wird verwendet um zu überprüfen ob der Benutzer Vorhanden ist sowie Mitglied des Aktuellen Dienstes ist
+*/
+func _validateUserCredentialsPKeyAndStartLoginProcess(db *Database, public_login_cred_key string, service_data *base.DirectoryServiceProcess) (bool, bool, error) {
+	// Speicher die Filter Premssion ab welcher der Nutzer haben muss um sich anmelden zu können sofern diese Option Aktiviert ist
+	filter_permission := "@signon"
+
+	// Es wird geprüft ob es einen Benutzer mit dem Entsprechenden Öffentlichen Credtials Key gibt
+	var has_found string
+	if err := db.db.QueryRow(SQLITE_GET_ACTIVE_USER_DIRECTORY_SERVICE_BY_LOGIN_CREDENTIALS, public_login_cred_key, service_data.DbServiceId).Scan(&has_found); err != nil {
+		return false, false, fmt.Errorf("ValidateUserCredentials: " + err.Error())
+	}
+	if has_found != "PERMITTED" {
+		return false, false, nil
+	}
+
+	// Es wird geprüft ob es eine Spizielle berechtigung benötigt um sich anzumelden
+	var has_filter string
+	if err := db.db.QueryRow(SQLITE_GET_USER_GROUP_DIRECTORY_SERVICE_FILTER_SIGNON, service_data.DbServiceId, filter_permission).Scan(&has_filter); err != nil {
+		return false, false, fmt.Errorf("ValidateUserCredentials: " + err.Error())
+	}
+	if has_filter == "YES" {
+		// Es wird geprüft ob der Benutzer die Rechte direkt oder indirekt besitzt
+		var has_perm_direct string
+		var has_perm_trought_group string
+		if err := db.db.QueryRow(SQLITE_GET_USER_HAS_PERMISSIONS_FOR_FILTER, public_login_cred_key, service_data.DbServiceId, filter_permission, filter_permission).Scan(&has_perm_direct, &has_perm_trought_group); err != nil {
+			return false, false, fmt.Errorf("ValidateUserCredentials: " + err.Error())
+		}
+
+		// Sollte der Nutzer nicht berechtigt sein sich anzumelden wird der Vorgang abgebrochen
+		if has_perm_direct != "GRANTED" && has_perm_trought_group != "GRANTED" {
+			return true, false, nil
+		}
+	}
+
+	// Der Vorgang wurde erfolgreich ausgeführt
+	return true, true, nil
+}
+
+func (obj *Database) ValidateUserCredentialsPKeyAndStartLoginProcess(public_login_cred_key string, service_data *base.DirectoryServiceProcess) (bool, bool, error) {
+	// Es wird geprüft ob das Datenbank Objekt verfügbar ist
+	if obj.db == nil {
+		return false, false, fmt.Errorf("ValidateUserCredentials: internal db error")
+	}
+
+	// Es wird Geprüft ob es sich um einen zulässigen Master Schlüssel handelt
+	is_validate_master_pkey, prep_credt_pkey := validatePublicKeyDBEntry(public_login_cred_key)
+	if !is_validate_master_pkey {
+		return false, false, fmt.Errorf("ValidateUserCredentials: invalid public master key")
+	}
+
+	// Der Threadlock wird verwendet
+	obj.lock.Lock()
+
+	// Es wird in einem Threadlock geprüft ob die Daten korrekt sind
+	user_authed, user_granted, err := _validateUserCredentialsPKeyAndStartLoginProcess(obj, prep_credt_pkey, service_data)
+	if err != nil {
+		obj.lock.Unlock()
+		return false, false, fmt.Errorf("ValidateUserCredentialsPKeyAndStartLoginProcess: " + err.Error())
+	}
+
+	// Der Threadlock wird freigegeben
+	obj.lock.Unlock()
+
+	// Der Vorgang wurde erfolgreich ausgeführt
+	return user_authed, user_granted, nil
+}
+
+/*
 Wird verwendet um den Aktuellen Login Process Hash abzurufen
 */
 func (obj *Database) CreateNewLoginProcessKey(public_login_cred_key string, public_client_session_key string, service_data *base.DirectoryServiceProcess, session_req base.RequestMetaDataSession) (*base.LoginProcessKeyCreationDbResult, error) {
 	// Es wird geprüft ob das Datenbank Objekt verfügbar ist
 	if obj.db == nil {
 		return nil, fmt.Errorf("CreateNewLoginProcessKey: internal db error")
+	}
+
+	// Es wird Geprüft ob es sich um einen zulässigen Master Schlüssel handelt
+	is_validate_master_pkey, prep_credt_pkey := validatePublicKeyDBEntry(public_login_cred_key)
+	if !is_validate_master_pkey {
+		return nil, fmt.Errorf("CreateNewLoginProcessKey: invalid public master key")
+	}
+
+	// Es wird geprüft es sich um einen zulässigen Inhaber Schlüssel handelt
+	is_validate_owner_pkey, pre_session_pkey := validatePublicKeyDBEntry(public_client_session_key)
+	if !is_validate_owner_pkey {
+		return nil, fmt.Errorf("CreateNewLoginProcessKey: invalid public session key")
 	}
 
 	// Die Aktuelle sowie die Ablaufzeit wird ermittelt
@@ -654,29 +711,45 @@ func (obj *Database) CreateNewLoginProcessKey(public_login_cred_key string, publ
 	obj.lock.Lock()
 
 	// Es wird geprüft ob es einen Benutzer mit dem Entsprechenden Öffentlichen Credtials Key gibt
-	var is_open string
-	if err := obj.db.QueryRow(SQLITE_GET_LOGIN_CREDENTIALS_ACCEPTED_BY_PUB_KEY, session_req.DbEntryId).Scan(&is_open); err != nil {
+	var has_found string
+	user_db_id := int64(-1)
+	if err := obj.db.QueryRow(SQLITE_GET_LOGIN_CREDENTIALS_ACCEPTED_BY_PUB_KEY, prep_credt_pkey, service_data.DbServiceId).Scan(&has_found, &user_db_id); err != nil {
 		obj.lock.Unlock()
-		return nil, err
+		return nil, fmt.Errorf("CreateNewLoginProcessKey: " + err.Error())
 	}
-	if is_open != "OPEN" {
+	if has_found != "FOUND" || user_db_id == -1 {
 		obj.lock.Unlock()
 		return nil, fmt.Errorf("CloseEntrySessionRequest: ")
 	}
 
 	// Es wird geprüft ob der OneTimeKey bereits verwendet wird
-	var otk_is_available string
-	if err := obj.db.QueryRow(SQLITE_GET_ONE_TIME_SESSION_CREATION_KEY_AVAIL, session_req.DbEntryId).Scan(&otk_is_available); err != nil {
+	is_ok, err := _checkIsKeyInDb(obj, pre_session_pkey, uint64(service_data.DbServiceId))
+	if err != nil {
 		obj.lock.Unlock()
-		return nil, err
+		return nil, fmt.Errorf("CreateNewLoginProcessKey: " + err.Error())
 	}
-	if is_open != "OPEN" {
+
+	// Sollte der Schlüssel bererits verwendet werden, wird der Vorgang abgebrochen
+	if !is_ok {
 		obj.lock.Unlock()
-		return nil, fmt.Errorf("CloseEntrySessionRequest: ")
+		return nil, fmt.Errorf("CreateNewLoginProcessKey: aborted, key double using not allowed")
+	}
+
+	// Es wird geprüft ob der Benutzer berechtigt ist sich anzumelden
+	user_authed, user_granted, err := _validateUserCredentialsPKeyAndStartLoginProcess(obj, prep_credt_pkey, service_data)
+	if err != nil {
+		obj.lock.Unlock()
+		return nil, fmt.Errorf("CreateNewLoginProcessKey: A" + err.Error())
+	}
+
+	// Sollte der Benutzer nicht berechtigt sein, wird der Vorgang abgebrochen
+	if !user_authed || !user_granted {
+		obj.lock.Unlock()
+		return nil, fmt.Errorf("CreateNewLoginProcessKey: y: operation for user not granted")
 	}
 
 	// Es wird ein neuer Sitzungseintrag in der Datenbank erzeugt
-	_, err = obj.db.Exec(SQLITE_WRITE_NEW_LOGIN_PROCESS, current_time)
+	_, err = obj.db.Exec(SQLITE_WRITE_NEW_LOGIN_PROCESS, user_db_id, service_data.DbServiceId, pre_session_pkey, key_pair.PrivateKey, current_time, service_data.DbServiceUserId, session_req.DbEntryId, -2)
 	if err != nil {
 		obj.lock.Unlock()
 		return nil, fmt.Errorf("CreateNewLoginProcessKey: " + err.Error())
@@ -685,63 +758,10 @@ func (obj *Database) CreateNewLoginProcessKey(public_login_cred_key string, publ
 	// Der Threadlock wird freigegeben
 	obj.lock.Unlock()
 
-	return nil, nil
-}
+	// Das Rückgabe Objekt wird erzeugt
+	result_obj := new(base.LoginProcessKeyCreationDbResult)
+	result_obj.PrivateLoginProcessClientKey = key_pair.PrivateKey
 
-/*
-Gibt an ob die Login Credentials korrekt sind
-*/
-func (obj *Database) VerifyLoginCredentials(public_login_cred_key string, req_metadata *base.RequestMetaData) bool {
-	// Der Lockguard wird gelockt
-	obj.lock.Lock()
-
-	// Es wird geprüft ob die Datenbank vorhanden ist
-
-	// Es wird geprüft ob die SQLite Datenbank vorhanden ist
-	return true
-}
-
-/*
-Wird verwendet um eine neue Sitzung zu erstellen
-*/
-func (obj *Database) CreateNewUserSession(public_login_cred_key string, public_login_cred_sig string, login_process_pkey string, req_metadata *base.RequestMetaData) (*base.UserSessionDbResult, error) {
-	return &base.UserSessionDbResult{}, nil
-}
-
-/*
-Wird verwendet um die Metadaten einer Sitzung abzurufen
-*/
-func (obj *Database) GetSessionFromDbById(session_id string, req_metadata *base.RequestMetaData) (*base.UserSessionDbResult, error, error) {
-	return nil, nil, nil
-}
-
-/*
-Wird verwendet um die Login Credentials abzurufen
-*/
-func (obj *Database) GetLoginCredentialsBySessionId(session_id string, req_metadata *base.RequestMetaData, primary_only bool) ([]*base.LoginCredentials, error, error) {
-	return nil, nil, nil
-}
-
-/*
-Wird verwendet um die API Credentials abzurufen
-*/
-func (obj *Database) GetApiCredentialsBySessionId(session_id string, req_metadata *base.RequestMetaData) ([]*base.ApiCredentials, error, error) {
-	return nil, nil, nil
-}
-
-/*
-Wird verwendet um alle Apps eines Benutzers abzurufen
-*/
-func (obj *Database) GetAppCredentialsBySessionId(session_id string, req_metadata *base.RequestMetaData) ([]*base.AppCredentials, error, error) {
-	return nil, nil, nil
-}
-
-// Wird verwendet um die Schlüsselpaare eines Benutzers abzurufen
-func (obj *Database) GetKeyPairsBySessionId(session_id string, req_metadata *base.RequestMetaData, primary_only bool) ([]*base.UserKeyPair, error, error) {
-	return nil, nil, nil
-}
-
-// Wird verwendet um die Gruppen in denen der Benutzer ist anzuzeigen
-func (obj *Database) GetUserGroupsBySessionId(session_id string, req_metadata *base.RequestMetaData) ([]*base.UserGroupData, error, error) {
-	return nil, nil, nil
+	// Die Daten werden zurückgegeben
+	return result_obj, nil
 }
