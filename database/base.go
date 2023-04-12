@@ -286,13 +286,14 @@ CREATE TABLE "request_closers" (
 `
 
 // Erstellt die Tabelle für das Starten von Benutzer Sitzungen innerhalb eines Dienstes
-var sql_create_user_service_sessions = `
+var user_session_starting_request_table = `
 CREATE TABLE "user_session_starting_request" (
 	"ussr"	INTEGER,
 	"user_id"	INTEGER,
 	"service_id"	INTEGER,
 	"one_time_client_session_pkey"	TEXT,
 	"one_time_server_session_privkey"	TEXT,
+	"one_time_server_session_pkey"	TEXT,
 	"created_at"	INTEGER,
 	"created_by_service_id_user"	INTEGER,
 	"created_by_request_id"	INTEGER,
@@ -466,7 +467,7 @@ func CreateNewSQLiteBasedDatabase(file_path string, local_priv_key *string) (*Da
 
 	// Sollte die User Session Starting Request Tabelle nicht vorhanden sein wird diese erzeugt
 	if !user_session_starting_request {
-		_, err = db.Exec(sql_create_user_service_sessions)
+		_, err = db.Exec(user_session_starting_request_table)
 		if err != nil {
 			return nil, fmt.Errorf("CreateNewSQLiteBasedDatabase: " + err.Error())
 		}

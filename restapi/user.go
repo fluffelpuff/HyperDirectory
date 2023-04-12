@@ -32,6 +32,18 @@ func (t *User) CreateNewLoginProcess(r *http.Request, args *base.VerifyLoginCred
 		}
 	}
 
+	// Es wird geprüft ob das Request Objekt korrekt ist
+	if !args.PreValidate() {
+		// Die Sitzung wird wieder geschlossen
+		CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("CreateNewLoginProcess: 4: Bad request"))
+
+		// Es wird ein fehler zurückgegeben
+		return &json2.Error{
+			Code:    400,
+			Message: "Bad Request",
+		}
+	}
+
 	// Die Aktuellen Dienstdaten werden geprüft
 	is_acccepted, user_authorized_function, directory_service_user_io, err := ValidateServiceAPIUser(t.Database, r, function_name_var, *source_meta_data)
 	if err != nil {
@@ -117,7 +129,7 @@ func (t *User) CreateNewLoginProcess(r *http.Request, args *base.VerifyLoginCred
 	}
 
 	// Die zu verschlüsselenden Daten werden vorbereitet
-	capsluted_data := base.EncryptedLoginProcessStartCapsule{OneTimePrivateKey: db_result.PrivateLoginProcessClientKey}
+	capsluted_data := base.EncryptedLoginProcessStartCapsule{OneTimePublicKey: db_result.PublicLoginProcessKey}
 	bytes_capsle, err := capsluted_data.ToBytes()
 	if err != nil {
 		// Die Sitzung wird wieder geschlossen
@@ -152,20 +164,64 @@ func (t *User) CreateNewLoginProcess(r *http.Request, args *base.VerifyLoginCred
 Erzeugt eine neue Benutzersitzung
 */
 
-func (t *User) CreateNewUserSession(r *http.Request, args *base.CreateNewUserSessionRequest, result *base.UserSessionDbResult) error {
-	// Es wird geprüft ob das Objekt korrekt ist
-	if args == nil {
-		return fmt.Errorf("CreateNewUserSession: invalid request")
-	}
-	if args.PublicLoginCredentialKey == nil {
-		return fmt.Errorf("CreateNewUserSession: invalid request")
-	}
-	if args.LoginCredentialKeySignature == nil {
-		return fmt.Errorf("CreateNewUserSession: invalid request")
-	}
-	if args.LoginProcessKey == nil {
-		return fmt.Errorf("CreateNewUserSession: invalid request")
-	}
+func (t *User) FinalCreateNewUserSessionByLoginProcessKey(r *http.Request, args *base.CreateNewUserSessionRequest, result *base.UserSessionDbResult) error {
+	/*
+		// Speichert den Namen der Aktuellen Funktion ab und erstellt eine Sitzung in der Datenbank
+		function_name_var := "@create_new_user_none_root"
+
+		// Die Request Metadaten werden zusammengefasst, in die Datenbank geschrieben und abgerufen
+		source_meta_data, err := CreateNewSessionRequestEntryAndGet(t.Database, r, function_name_var)
+		if err != nil {
+			return &json2.Error{
+				Code:    500,
+				Message: "Internal error",
+			}
+		}
+
+		// Die Aktuellen Dienstdaten werden geprüft
+		is_acccepted, user_authorized_function, directory_service_user_io, err := ValidateServiceAPIUser(t.Database, r, function_name_var, *source_meta_data)
+		if err != nil {
+			// Die Sitzung wird wieder geschlossen
+			CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("FinalCreateNewUserSessionByLoginProcessKey: 1: "+err.Error()))
+
+			// Es wird ein fehler zurückgegeben
+			return &json2.Error{
+				Code:    500,
+				Message: "Invalid request, aborted",
+			}
+		}
+
+		// Sollten die API Daten nicht Akzeptiert werden, wird der Vorgang abgebrochen
+		if !is_acccepted {
+			// Die Sitzung wird wieder geschlossen
+			CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("FinalCreateNewUserSessionByLoginProcessKey: 2: user not authenticated"))
+
+			// Es wird ein fehler zurückgegeben
+			return &json2.Error{
+				Code:    401,
+				Message: "The service could not be authenticated, unkown user",
+			}
+		}
+
+		// Sollte der Benutzer nicht berechtigt sein, diese Funktion auszuführen, wird der vorgang abgebrochen
+		if !user_authorized_function {
+			// Die Sitzung wird wieder geschlossen
+			CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("FinalCreateNewUserSessionByLoginProcessKey: 3: user not authenticated"))
+
+			// Es wird ein fehler zurückgegeben
+			return &json2.Error{
+				Code:    401,
+				Message: "The service could not be authenticated, not authorized for this function",
+			}
+		}
+
+	*/
+
+	// Es wird geprüft ob es eine Wartende Sitzung für den Aktuellen Schlüssel gibt, wenn ja wird der Private Schlüssel und die DatenbankId zurückgegeben
+
+	// Die Daten werden mit dem Privaten Schlüssel aus der Datenbank entschlüsselt
+
+	// Es wird eine neue Sitzung auf Basis des Login Credentials Key, des Server Side Keys sowie des OneTime Session Keys erzeugt
 
 	// Der Vorgang wurde ohne fehler durchgeführt
 	return nil
@@ -185,6 +241,18 @@ func (t *User) CreateNewEMailBasedUserNoneRoot(r *http.Request, args *base.Creat
 		return &json2.Error{
 			Code:    500,
 			Message: "Internal error",
+		}
+	}
+
+	// Es wird geprüft ob das Request Objekt korrekt ist
+	if !args.PreValidate() {
+		// Die Sitzung wird wieder geschlossen
+		CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 4: Bad request"))
+
+		// Es wird ein fehler zurückgegeben
+		return &json2.Error{
+			Code:    400,
+			Message: "Bad Request",
 		}
 	}
 
@@ -222,18 +290,6 @@ func (t *User) CreateNewEMailBasedUserNoneRoot(r *http.Request, args *base.Creat
 		return &json2.Error{
 			Code:    401,
 			Message: "The service could not be authenticated, not authorized for this function",
-		}
-	}
-
-	// Es wird geprüft ob das Request Objekt korrekt ist
-	if !args.PreValidate() {
-		// Die Sitzung wird wieder geschlossen
-		CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 4: Bad request"))
-
-		// Es wird ein fehler zurückgegeben
-		return &json2.Error{
-			Code:    400,
-			Message: "Bad Request",
 		}
 	}
 

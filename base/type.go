@@ -43,13 +43,6 @@ type UserSessionDbResult struct {
 	ClientsidePrivKey string
 }
 
-type VerifyLoginCredentialsRequest struct {
-	LoginCredentialSignatureKey *string
-	PublicLoginCredentialKey    *string
-	OneTimePublicSessionKey     *string
-	MetaData                    *RequestMetaData
-}
-
 type CreateNewUserSessionRequest struct {
 	PublicLoginCredentialKey    *string
 	LoginCredentialKeySignature *string
@@ -80,7 +73,7 @@ type UserCreateResponse struct {
 }
 
 type LoginProcessKeyCreationDbResult struct {
-	PrivateLoginProcessClientKey string
+	PublicLoginProcessKey string
 }
 
 type UserLoginProcessStartResponse struct {

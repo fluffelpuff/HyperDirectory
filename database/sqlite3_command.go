@@ -166,8 +166,8 @@ WHERE
 
 // Wird verwendet um eine neuen Login Vorgang zu erstellen
 var SQLITE_WRITE_NEW_LOGIN_PROCESS = `
-INSERT INTO user_session_starting_request (user_id, service_id, one_time_client_session_pkey, one_time_server_session_privkey, created_at, created_by_service_id_user, created_by_request_id, created_by_user_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO user_session_starting_request (user_id, service_id, one_time_client_session_pkey, one_time_server_session_pkey, one_time_server_session_privkey, created_at, created_by_service_id_user, created_by_request_id, created_by_user_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 `
 
 // Wird verwendet um zu ermitteln ob es einen Aktiven Benutzer mit Passenden Login Credentials zu dem Aktuellen Directory Service gibt

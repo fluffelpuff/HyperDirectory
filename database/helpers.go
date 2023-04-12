@@ -35,8 +35,6 @@ func _checkIsKeyInDb(db *Database, public_key string, service_id uint64) (bool, 
 		return false, fmt.Errorf("_checkIsKeyInDb: 1: " + err.Error())
 	}
 
-	fmt.Println(has_found_in_login_process_table, has_found_in_session_table, has_found_key_pairs, has_found_as_master_pubkey)
-
 	// Es wird geprüft ob alle Vorgänge erfolgreich waren
 	if has_found_in_login_process_table != "GRANTED" || has_found_in_session_table != "GRANTED" || has_found_key_pairs != "GRANTED" || has_found_as_master_pubkey != "GRANTED" {
 		return false, nil
