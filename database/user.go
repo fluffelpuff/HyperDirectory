@@ -1,6 +1,7 @@
 package database
 
 import (
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -8,6 +9,59 @@ import (
 	hdcrypto "github.com/fluffelpuff/HyperDirectory/crypto"
 	hdsha3 "github.com/fluffelpuff/HyperDirectory/crypto/sha3"
 )
+
+/*
+Wird verwendet um zu überprüfen ob die Benutzerdaten noch verfügbar sind
+*/
+func _checkUserDataAvailability(db *sql.DB, prep_email string, prep_master_pkey string, pre_owner_pkey string) (bool, bool, bool, error) {
+	// Es wird geprüft ob die E-Mail Adresse derzeit Aktiv verwendet wird
+	var total_active_mails int64
+	if err := db.QueryRow(SQLITE_CHECK_EMAIL_IN_DB, base.PrepareText(prep_email)).Scan(&total_active_mails); err != nil {
+		if err.Error() != "sql: no rows in result set" {
+			return false, false, false, fmt.Errorf("_checkUserDataAvailability: " + err.Error())
+		}
+		return false, false, false, nil
+	}
+
+	// Es wird geprüft ob der Master Schlüssel derzeit Aktiv verwendet wird
+	var total_active_pk_mater_keys int64
+	if err := db.QueryRow(SQLITE_CHECK_PKEY_IKNOWN, base.PrepareText(prep_master_pkey)).Scan(&total_active_pk_mater_keys); err != nil {
+		if err.Error() != "sql: no rows in result set" {
+			return false, false, false, fmt.Errorf("_checkUserDataAvailability: " + err.Error())
+		}
+		return false, false, false, nil
+	}
+
+	// Es wird geprüft ob der Owner Schlüssel derzeit Aktiv verwendet wird
+	var total_active_owner_pk_keys int64
+	if err := db.QueryRow(SQLITE_CHECK_PKEY_IKNOWN, base.PrepareText(pre_owner_pkey)).Scan(&total_active_pk_mater_keys); err != nil {
+		if err.Error() != "sql: no rows in result set" {
+			return false, false, false, fmt.Errorf("_checkUserDataAvailability: " + err.Error())
+		}
+		return false, false, false, nil
+	}
+
+	// Es wird geprüft ob der Master Schlüssel derzeit Aktiv als Master verwendet wird
+	var total_active_pk_master_master_keys int64
+	if err := db.QueryRow(SQLITE_CHECK_USER_WITH_MASTER_PKEY_EXIST, base.PrepareText(prep_master_pkey)).Scan(&total_active_pk_master_master_keys); err != nil {
+		if err.Error() != "sql: no rows in result set" {
+			return false, false, false, fmt.Errorf("_checkUserDataAvailability: " + err.Error())
+		}
+		return false, false, false, nil
+	}
+
+	// Es wird geprüft ob der Owner Schlüssel derzeit Aktiv als Master verwendet wird
+	var total_active_pk_owner_master_keys int64
+	if err := db.QueryRow(SQLITE_CHECK_USER_WITH_MASTER_PKEY_EXIST, base.PrepareText(pre_owner_pkey)).Scan(&total_active_pk_owner_master_keys); err != nil {
+		if err.Error() != "sql: no rows in result set" {
+			return false, false, false, fmt.Errorf("_checkUserDataAvailability: " + err.Error())
+		}
+		return false, false, false, nil
+	}
+
+	// Die Daten werden zurückgegeben
+	return total_active_mails == 0, total_active_pk_mater_keys == 0 && total_active_pk_master_master_keys == 0, total_active_owner_pk_keys == 0 && total_active_pk_owner_master_keys == 0, nil
+}
 
 /*
 Wird verwendet um zu überprüfen ob die Benutzerdaten noch verfügbar sind

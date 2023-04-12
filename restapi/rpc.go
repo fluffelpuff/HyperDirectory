@@ -94,7 +94,7 @@ func CreateNewSessionRequestEntryAndGet(t *db.Database, r *http.Request, functio
 		}
 
 		// Der Eintrag wird in der Datenbank erstellt
-		result, err := t.OpenNewRequestEntryAndGetId(decoded, function_name, true)
+		result, err := t.OpenNewEntrySessionRequet(decoded, function_name, true)
 		if err != nil {
 			return nil, err
 		}
@@ -126,7 +126,7 @@ func CreateNewSessionRequestEntryAndGet(t *db.Database, r *http.Request, functio
 	}
 
 	// Der Eintrag wird in der Datenbank erstellt
-	result, err := t.OpenNewRequestEntryAndGetId(&req_obj, function_name, false)
+	result, err := t.OpenNewEntrySessionRequet(&req_obj, function_name, false)
 	if err != nil {
 		return nil, err
 	}

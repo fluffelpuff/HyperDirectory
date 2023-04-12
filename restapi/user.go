@@ -165,57 +165,54 @@ Erzeugt eine neue Benutzersitzung
 */
 
 func (t *User) FinalCreateNewUserSessionByLoginProcessKey(r *http.Request, args *base.CreateNewUserSessionRequest, result *base.UserSessionDbResult) error {
-	/*
-		// Speichert den Namen der Aktuellen Funktion ab und erstellt eine Sitzung in der Datenbank
-		function_name_var := "@create_new_user_none_root"
+	// Speichert den Namen der Aktuellen Funktion ab und erstellt eine Sitzung in der Datenbank
+	function_name_var := "@create_new_user_none_root"
 
-		// Die Request Metadaten werden zusammengefasst, in die Datenbank geschrieben und abgerufen
-		source_meta_data, err := CreateNewSessionRequestEntryAndGet(t.Database, r, function_name_var)
-		if err != nil {
-			return &json2.Error{
-				Code:    500,
-				Message: "Internal error",
-			}
+	// Die Request Metadaten werden zusammengefasst, in die Datenbank geschrieben und abgerufen
+	source_meta_data, err := CreateNewSessionRequestEntryAndGet(t.Database, r, function_name_var)
+	if err != nil {
+		return &json2.Error{
+			Code:    500,
+			Message: "Internal error",
 		}
+	}
 
-		// Die Aktuellen Dienstdaten werden geprüft
-		is_acccepted, user_authorized_function, directory_service_user_io, err := ValidateServiceAPIUser(t.Database, r, function_name_var, *source_meta_data)
-		if err != nil {
-			// Die Sitzung wird wieder geschlossen
-			CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("FinalCreateNewUserSessionByLoginProcessKey: 1: "+err.Error()))
+	// Die Aktuellen Dienstdaten werden geprüft
+	is_acccepted, user_authorized_function, directory_service_user_io, err := ValidateServiceAPIUser(t.Database, r, function_name_var, *source_meta_data)
+	if err != nil {
+		// Die Sitzung wird wieder geschlossen
+		CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("FinalCreateNewUserSessionByLoginProcessKey: 1: "+err.Error()))
 
-			// Es wird ein fehler zurückgegeben
-			return &json2.Error{
-				Code:    500,
-				Message: "Invalid request, aborted",
-			}
+		// Es wird ein fehler zurückgegeben
+		return &json2.Error{
+			Code:    500,
+			Message: "Invalid request, aborted",
 		}
+	}
 
-		// Sollten die API Daten nicht Akzeptiert werden, wird der Vorgang abgebrochen
-		if !is_acccepted {
-			// Die Sitzung wird wieder geschlossen
-			CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("FinalCreateNewUserSessionByLoginProcessKey: 2: user not authenticated"))
+	// Sollten die API Daten nicht Akzeptiert werden, wird der Vorgang abgebrochen
+	if !is_acccepted {
+		// Die Sitzung wird wieder geschlossen
+		CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("FinalCreateNewUserSessionByLoginProcessKey: 2: user not authenticated"))
 
-			// Es wird ein fehler zurückgegeben
-			return &json2.Error{
-				Code:    401,
-				Message: "The service could not be authenticated, unkown user",
-			}
+		// Es wird ein fehler zurückgegeben
+		return &json2.Error{
+			Code:    401,
+			Message: "The service could not be authenticated, unkown user",
 		}
+	}
 
-		// Sollte der Benutzer nicht berechtigt sein, diese Funktion auszuführen, wird der vorgang abgebrochen
-		if !user_authorized_function {
-			// Die Sitzung wird wieder geschlossen
-			CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("FinalCreateNewUserSessionByLoginProcessKey: 3: user not authenticated"))
+	// Sollte der Benutzer nicht berechtigt sein, diese Funktion auszuführen, wird der vorgang abgebrochen
+	if !user_authorized_function {
+		// Die Sitzung wird wieder geschlossen
+		CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("FinalCreateNewUserSessionByLoginProcessKey: 3: user not authenticated"))
 
-			// Es wird ein fehler zurückgegeben
-			return &json2.Error{
-				Code:    401,
-				Message: "The service could not be authenticated, not authorized for this function",
-			}
+		// Es wird ein fehler zurückgegeben
+		return &json2.Error{
+			Code:    401,
+			Message: "The service could not be authenticated, not authorized for this function",
 		}
-
-	*/
+	}
 
 	// Es wird geprüft ob es eine Wartende Sitzung für den Aktuellen Schlüssel gibt, wenn ja wird der Private Schlüssel und die DatenbankId zurückgegeben
 
