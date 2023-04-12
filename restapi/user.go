@@ -16,43 +16,6 @@ type User struct {
 }
 
 /*
-Überprüft ob die Anmeldeinformationen korrekt sind
-*/
-
-func (t *User) VerifyLoginCredentials(r *http.Request, args *base.VerifyLoginCredentialsRequest, result *bool) error {
-	// Es wird geprüft ob das Objekt korrekt ist
-	if args == nil {
-		return fmt.Errorf("VerifyLoginCredentials: ")
-	}
-	if args.PublicLoginCredentialKey == nil {
-		return fmt.Errorf("VerifyLoginCredentials: ")
-	}
-
-	// Es wird geprüft ob das Passwort 64 Zeichen lang ist
-	if len(*args.PublicLoginCredentialKey) != 66 {
-		*result = false
-		return nil
-	}
-
-	// Die Request Metadaten werden zusammengefasst
-	meta_data := base.RequestMetaData{}
-
-	// Es wird geprüft ob es einen Origin Eintrag gibt
-	if args.MetaData != nil {
-		meta_data = *args.MetaData
-	}
-
-	// Es wird eine Anfrage an die Datenbank gestellt
-	db_check_result := t.Database.VerifyLoginCredentials(*args.PublicLoginCredentialKey, &meta_data)
-
-	// Die Antwort wird zurückgesendet
-	*result = db_check_result
-
-	// Der Vorgang wurde ohne fehler durchgeführt
-	return nil
-}
-
-/*
 Ruft den Account Index ab, dieser wird z.b benötigt um einen Anmeldevorgang auszuführen
 */
 
@@ -203,29 +166,6 @@ func (t *User) CreateNewUserSession(r *http.Request, args *base.CreateNewUserSes
 	if args.LoginProcessKey == nil {
 		return fmt.Errorf("CreateNewUserSession: invalid request")
 	}
-
-	// Die Request Metadaten werden zusammengefasst
-	meta_data := base.RequestMetaData{}
-
-	// Es wird geprüft ob es einen Origin Eintrag gibt
-	if args.MetaData != nil {
-		meta_data = *args.MetaData
-	}
-
-	// Es wird eine Anfrage an die Datenbank gestellt
-	db_check_result := t.Database.VerifyLoginCredentials(*args.PublicLoginCredentialKey, &meta_data)
-	if !db_check_result {
-		return fmt.Errorf("CreateNewUserSession: unkown user data")
-	}
-
-	// Es wird eine neue Sitzung in der Datenbank erstetllt
-	user_session, err := t.Database.CreateNewUserSession(*args.PublicLoginCredentialKey, *args.LoginCredentialKeySignature, *args.LoginProcessKey, &meta_data)
-	if err != nil {
-		return fmt.Errorf("CreateNewUserSession: " + err.Error())
-	}
-
-	// Die Antwort wird zurückgesendet
-	*result = *user_session
 
 	// Der Vorgang wurde ohne fehler durchgeführt
 	return nil
