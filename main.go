@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
+	apiserver "github.com/fluffelpuff/HyperDirectory/apiserver"
 	db "github.com/fluffelpuff/HyperDirectory/database"
-	restapi "github.com/fluffelpuff/HyperDirectory/restapi"
 )
 
 func main() {
@@ -32,7 +32,7 @@ func main() {
 
 	// Der RPC Server wird gestartet
 	cert_file, key_file := "/Users/fluffelbuff/Desktop/test.com.crt", "/Users/fluffelbuff/Desktop/test.com.pem"
-	rpc_server, err := restapi.CreateNewRPCServer(db, 9001, nil, &cert_file, &key_file, rootCAs)
+	rpc_server, err := apiserver.CreateNewRPCServer(db, 9001, nil, &cert_file, &key_file, rootCAs)
 	if err != nil {
 		fmt.Println(err)
 		return

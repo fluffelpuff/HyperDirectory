@@ -1,4 +1,4 @@
-package restapi
+package apiserver
 
 type EmptyArgs struct{}
 

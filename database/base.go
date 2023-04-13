@@ -269,6 +269,7 @@ CREATE TABLE "user_sessions" (
 	"created_by_service_id_user"	INTEGER,
 	"created_by_request_id"	INTEGER,
 	"created_by_user_id"	INTEGER,
+	"created_by_login_process_id"	INTEGER,
 	PRIMARY KEY("usid" AUTOINCREMENT)
 );
 `

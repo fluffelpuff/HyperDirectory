@@ -1,4 +1,4 @@
-package restapi
+package apiserver
 
 import (
 	"crypto/sha256"

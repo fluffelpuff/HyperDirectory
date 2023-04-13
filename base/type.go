@@ -44,10 +44,9 @@ type UserSessionDbResult struct {
 }
 
 type CreateNewUserSessionRequest struct {
-	PublicLoginCredentialKey    *string
-	LoginCredentialKeySignature *string
-	LoginProcessKey             *string
-	MetaData                    *RequestMetaData
+	EncryptedServerData *string
+	PublicSessionKey    *string
+	MetaData            *RequestMetaData
 }
 
 type NewUserDbResult struct {

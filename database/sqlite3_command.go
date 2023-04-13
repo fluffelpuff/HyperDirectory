@@ -117,7 +117,7 @@ WHERE
 
 // Wird verwendet um eine User Session zu erstellen
 var SQLITE_WRITE_CREATE_USER_SESSION = `
-INSERT INTO user_sessions (user_id, service_id, device_id, created_at, client_pkey, server_privkey, session_id_chsum, created_by_service_id_user, created_by_request_id, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO user_sessions (user_id, service_id, device_id, created_at, client_pkey, server_privkey, session_id_chsum, created_by_login_process_id, created_by_service_id_user, created_by_request_id, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 `
 
 // Wird verwendet um zu ermitteln ob der Entsprechende Meta Request bereits geschlossen wurde
@@ -267,4 +267,25 @@ SELECT
 	END AS user_permitted
 FROM users
 WHERE users.active == 1 AND users.master_pkey == ?
+`
+
+// Wird verwendet um zu überprüfen ob es einen Offenen Login Process gibt welcher auf bestötigugn wartet
+var SQLITE_GET_CHECK_AND_PRIV_KEY_BY_OPEN_LOGIN_PROCESSES = `
+SELECT
+	user_session_starting_request.one_time_client_session_pkey,
+	user_session_starting_request.one_time_server_session_privkey,
+	CASE WHEN COUNT(user_session_starting_request.ussr) >= 1
+		THEN 'YES'
+		ELSE 'NO'
+	END AS found_session_key,
+	CASE WHEN COUNT(user_sessions.usid) >= 1
+		THEN 'NO'
+		ELSE 'YES'
+	END AS found_sessions
+FROM user_session_starting_request
+LEFT JOIN user_sessions ON user_sessions.created_by_login_process_id == user_session_starting_request.ussr
+WHERE
+	user_session_starting_request.one_time_client_session_pkey == ? AND
+	user_session_starting_request.service_id == ?
+LIMIT 1
 `

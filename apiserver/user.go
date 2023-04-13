@@ -1,4 +1,4 @@
-package restapi
+package apiserver
 
 import (
 	"fmt"
@@ -82,7 +82,7 @@ func (t *User) CreateNewLoginProcess(r *http.Request, args *base.VerifyLoginCred
 	}
 
 	// Es wird geprüft ob der Benutzer bekannt ist
-	user_found, access_granted_result, err := t.Database.ValidateUserCredentialsPKeyAndStartLoginProcess(*args.PublicLoginCredentialKey, directory_service_user_io)
+	user_found, access_granted_result, err := t.Database.ValidateUserCredentialsPKey(*args.PublicLoginCredentialKey, directory_service_user_io)
 	if err != nil {
 		// Die Sitzung wird wieder geschlossen
 		CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("CreateNewLoginProcess: 4: "+err.Error()))
@@ -119,7 +119,7 @@ func (t *User) CreateNewLoginProcess(r *http.Request, args *base.VerifyLoginCred
 	}
 
 	// Es wird geprüft ob es einen Aktiven Benutzer passender zu dem Öffentlichen Schlüssel passt
-	db_result, err := t.Database.CreateNewLoginProcessKey(*args.PublicLoginCredentialKey, *args.OneTimePublicSessionKey, directory_service_user_io, *source_meta_data)
+	db_result, err := t.Database.CreateNewLoginProcess(*args.PublicLoginCredentialKey, *args.OneTimePublicSessionKey, directory_service_user_io, *source_meta_data)
 	if err != nil {
 		// Die Sitzung wird wieder geschlossen
 		CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("CreateNewLoginProcess: 7: "+err.Error()))
@@ -215,6 +215,41 @@ func (t *User) FinalCreateNewUserSessionByLoginProcessKey(r *http.Request, args 
 	}
 
 	// Es wird geprüft ob es eine Wartende Sitzung für den Aktuellen Schlüssel gibt, wenn ja wird der Private Schlüssel und die DatenbankId zurückgegeben
+	_, _, found_session, granted, err := t.Database.HasOpenAndWaitingLoginProcessSessionForKey(*args.PublicSessionKey, directory_service_user_io)
+	if err != nil {
+		// Die Sitzung wird wieder geschlossen
+		CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("FinalCreateNewUserSessionByLoginProcessKey: 4: "+err.Error()))
+
+		// Es wird ein fehler zurückgegeben
+		return &json2.Error{
+			Code:    500,
+			Message: "Internal error",
+		}
+	}
+
+	// Sollte keine Sitzung vorhanden sein, wird der Vorgang abgebrochen
+	if !found_session {
+		// Die Sitzung wird wieder geschlossen
+		CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("FinalCreateNewUserSessionByLoginProcessKey: 4: unkown session"))
+
+		// Es wird ein fehler zurückgegeben
+		return &json2.Error{
+			Code:    401,
+			Message: "The service could not be authenticated, unkown session",
+		}
+	}
+
+	// Sollte es bereits eine Sitzung geben, wird der vorgang abgebrochen
+	if !granted {
+		// Die Sitzung wird wieder geschlossen
+		CloseSessionRequest(t.Database, r, source_meta_data, nil, fmt.Errorf("FinalCreateNewUserSessionByLoginProcessKey: 5: session always finally created"))
+
+		// Es wird ein fehler zurückgegeben
+		return &json2.Error{
+			Code:    401,
+			Message: "The service could not be authenticated, not authorized for this function",
+		}
+	}
 
 	// Die Daten werden mit dem Privaten Schlüssel aus der Datenbank entschlüsselt
 
@@ -334,75 +369,77 @@ func (t *User) CreateNewEMailBasedUserNoneRoot(r *http.Request, args *base.Creat
 	response_data.IsRoot = db_result.IsRoot
 
 	// Sofern eine neue Sitzung erstellt werden soll, wird der Vorgang nun durchgeführt
-	if *args.CreateClientSession {
-		// Es wird versucht die Sitzung in der Datenbank zu öffnen
-		ses, err := t.Database.CreateNewUserSessionByUID(db_result.UserId, directory_service_user_io, *source_meta_data)
-		if err != nil {
-			// Es wird festgelegt dass keine SessionIds vorhanden sind
-			response_data.HasDataForClient = false
+	if args.CreateClientSession != nil {
+		if *args.CreateClientSession {
+			// Es wird versucht die Sitzung in der Datenbank zu öffnen
+			ses, err := t.Database.CreateNewUserSessionByUID(db_result.UserId, directory_service_user_io, *source_meta_data)
+			if err != nil {
+				// Es wird festgelegt dass keine SessionIds vorhanden sind
+				response_data.HasDataForClient = false
 
-			// Der Fehler wird an den Server übermittelt
-			response_data.Errors = append(response_data.Errors, err.Error())
+				// Der Fehler wird an den Server übermittelt
+				response_data.Errors = append(response_data.Errors, err.Error())
+
+				// Die Sitzung wird wieder geschlossen
+				warning := fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 10: " + err.Error()).Error()
+				CloseSessionRequest(t.Database, r, source_meta_data, &warning, nil)
+
+				// Die Daten werden zurückgegeben
+				response_data.Errors = append(response_data.Errors, "Internal error by creating session")
+				*result = *response_data
+				return nil
+			}
+
+			// Die zu verschlüsselenden Daten werden vorbereitet
+			capsluted_data := base.EncryptedSessionCapsule{ClientsidePrivKey: ses.ClientsidePrivKey, ClintsidePkey: ses.ClintsidePkey}
+			bytes_capsle, err := capsluted_data.ToBytes()
+			if err != nil {
+				// Es wird festgelegt dass keine SessionIds vorhanden sind
+				response_data.HasDataForClient = false
+
+				// Der Fehler wird an den Server übermittelt
+				response_data.Errors = append(response_data.Errors, err.Error())
+
+				// Die Sitzung wird wieder geschlossen
+				warning := fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 11: " + err.Error()).Error()
+				CloseSessionRequest(t.Database, r, source_meta_data, &warning, nil)
+
+				// Die Daten werden zurückgegeben
+				*result = *response_data
+				return nil
+			}
+
+			// Die Daten werden verschlüsselt
+			encrypted_str, err := hdcrypto.ECIESSecp256k1PublicKeyEncryptBytes(*args.PublicMasterKey, bytes_capsle)
+			if err != nil {
+				// Es wird festgelegt dass keine SessionIds vorhanden sind
+				response_data.HasDataForClient = false
+
+				// Der Fehler wird an den Server übermittelt
+				response_data.Errors = append(response_data.Errors, err.Error())
+
+				// Die Sitzung wird wieder geschlossen
+				warning := fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 12: " + err.Error()).Error()
+				CloseSessionRequest(t.Database, r, source_meta_data, &warning, nil)
+
+				// Die Daten werden zurückgegeben
+				*result = *response_data
+				return nil
+			}
+
+			// Die Daten werden vorbereitet
+			response_data.EncryptedClientData = encrypted_str
+			response_data.HasDataForClient = true
 
 			// Die Sitzung wird wieder geschlossen
-			warning := fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 10: " + err.Error()).Error()
-			CloseSessionRequest(t.Database, r, source_meta_data, &warning, nil)
+			CloseSessionRequest(t.Database, r, source_meta_data, nil, nil)
 
-			// Die Daten werden zurückgegeben
-			response_data.Errors = append(response_data.Errors, "Internal error by creating session")
+			// Die Daten für die Sitzung werden zurückgegeben
 			*result = *response_data
+
+			// Der Vorgang wurde ohne fehler durchgeführt
 			return nil
 		}
-
-		// Die zu verschlüsselenden Daten werden vorbereitet
-		capsluted_data := base.EncryptedSessionCapsule{ClientsidePrivKey: ses.ClientsidePrivKey, ClintsidePkey: ses.ClintsidePkey}
-		bytes_capsle, err := capsluted_data.ToBytes()
-		if err != nil {
-			// Es wird festgelegt dass keine SessionIds vorhanden sind
-			response_data.HasDataForClient = false
-
-			// Der Fehler wird an den Server übermittelt
-			response_data.Errors = append(response_data.Errors, err.Error())
-
-			// Die Sitzung wird wieder geschlossen
-			warning := fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 11: " + err.Error()).Error()
-			CloseSessionRequest(t.Database, r, source_meta_data, &warning, nil)
-
-			// Die Daten werden zurückgegeben
-			*result = *response_data
-			return nil
-		}
-
-		// Die Daten werden verschlüsselt
-		encrypted_str, err := hdcrypto.ECIESSecp256k1PublicKeyEncryptBytes(*args.PublicMasterKey, bytes_capsle)
-		if err != nil {
-			// Es wird festgelegt dass keine SessionIds vorhanden sind
-			response_data.HasDataForClient = false
-
-			// Der Fehler wird an den Server übermittelt
-			response_data.Errors = append(response_data.Errors, err.Error())
-
-			// Die Sitzung wird wieder geschlossen
-			warning := fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 12: " + err.Error()).Error()
-			CloseSessionRequest(t.Database, r, source_meta_data, &warning, nil)
-
-			// Die Daten werden zurückgegeben
-			*result = *response_data
-			return nil
-		}
-
-		// Die Daten werden vorbereitet
-		response_data.EncryptedClientData = encrypted_str
-		response_data.HasDataForClient = true
-
-		// Die Sitzung wird wieder geschlossen
-		CloseSessionRequest(t.Database, r, source_meta_data, nil, nil)
-
-		// Die Daten für die Sitzung werden zurückgegeben
-		*result = *response_data
-
-		// Der Vorgang wurde ohne fehler durchgeführt
-		return nil
 	}
 
 	// Es wird festgelegt dass keine SessionIds vorhanden sind
