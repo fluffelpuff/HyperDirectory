@@ -92,13 +92,13 @@ func _write_json_https_request(tls_config *tls.Config, url string, function_name
 // Erstellt eine neuen RPC_CLIENT
 func CreateNewRPCClient(url string) (*RpcClient, error) {
 	// Laden des Client-Zertifikats und Schlüssels
-	cert, err := tls.LoadX509KeyPair("resc/test.com_client.crt", "resc/test.com_client.pem")
+	cert, err := tls.LoadX509KeyPair("../resc/test.com_client.crt", "../resc/test.com_client.pem")
 	if err != nil {
 		log.Fatal("Error loading client certificate and key: ", err)
 	}
 
 	// Laden der Root-CA des Servers
-	caCert, err := os.ReadFile("resc/DGPRootCA.crt")
+	caCert, err := os.ReadFile("../resc/DGPRootCA.crt")
 	if err != nil {
 		log.Fatal("Error reading server CA certificate: ", err)
 	}
