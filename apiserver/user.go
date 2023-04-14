@@ -24,7 +24,7 @@ func (t *User) CreateNewLoginProcess(r *http.Request, args *base.VerifyLoginCred
 	function_name_var := "@create_new_login_process"
 
 	// Die Request Metadaten werden zusammengefasst, in die Datenbank geschrieben und abgerufen
-	source_meta_data, err := CreateNewSessionRequestEntryAndGet(t.Database, r, function_name_var)
+	source_meta_data, err := CreateNewHTTPSessionRequestEntryAndGet(t.Database, r, function_name_var)
 	if err != nil {
 		return &json2.Error{
 			Code:    500,
@@ -169,7 +169,7 @@ func (t *User) FinalCreateNewUserSessionByLoginProcessKey(r *http.Request, args 
 	function_name_var := "@create_new_user_none_root"
 
 	// Die Request Metadaten werden zusammengefasst, in die Datenbank geschrieben und abgerufen
-	source_meta_data, err := CreateNewSessionRequestEntryAndGet(t.Database, r, function_name_var)
+	source_meta_data, err := CreateNewHTTPSessionRequestEntryAndGet(t.Database, r, function_name_var)
 	if err != nil {
 		return &json2.Error{
 			Code:    500,
@@ -268,7 +268,7 @@ func (t *User) CreateNewEMailBasedUserNoneRoot(r *http.Request, args *base.Creat
 	function_name_var := "@create_new_user_none_root"
 
 	// Die Request Metadaten werden zusammengefasst, in die Datenbank geschrieben und abgerufen
-	source_meta_data, err := CreateNewSessionRequestEntryAndGet(t.Database, r, function_name_var)
+	source_meta_data, err := CreateNewHTTPSessionRequestEntryAndGet(t.Database, r, function_name_var)
 	if err != nil {
 		return &json2.Error{
 			Code:    500,

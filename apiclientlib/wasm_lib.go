@@ -8,5 +8,9 @@ import (
 )
 
 func main() {
-	fmt.Println("wasm")
+	client_master, err := CreateNewRPCClient()
+	if err != nil {
+
+	}
+	fmt.prin
 }

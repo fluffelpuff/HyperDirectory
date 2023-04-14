@@ -27,9 +27,28 @@ type RestAPIServer struct {
 	isRunning  bool
 }
 
+type Request struct {
+	Method string        `json:"method"`
+	Params []interface{} `json:"params"`
+}
+
+type Response struct {
+	Result interface{} `json:"result"`
+	Error  interface{} `json:"error"`
+}
+
+// Stellt das basis Struct für den RPC dar
+type RPC struct{}
+
 // Gibt an ob der RPC Server ausgeführt wird
 func (t *RestAPIServer) IsRunning() bool {
 	return t.isRunning
+}
+
+// Wird von Server verwendet um ein Hello abzuholen
+func (h *RPC) Hello(r *http.Request, args *string, reply *string) error {
+	*reply = "hello"
+	return nil
 }
 
 // Diese Funktion ließt die Header Proxy Daten ein
@@ -83,7 +102,7 @@ func ValidateServiceAPIUser(t *db.Database, r *http.Request, function_name strin
 }
 
 // Erstellt ein neues Metadaten Objekt und schreibt dieses in eine Datenbank
-func CreateNewSessionRequestEntryAndGet(t *db.Database, r *http.Request, function_name string) (*base.RequestMetaDataSession, error) {
+func CreateNewHTTPSessionRequestEntryAndGet(t *db.Database, r *http.Request, function_name string) (*base.RequestMetaDataSession, error) {
 	// Es wird geprüft ob ein Proxy Eintrag vorhanden ist
 	proxy_data := r.Header.Get("Origin-Request-Proxy-Data")
 	if len(proxy_data) > 0 {
@@ -154,12 +173,14 @@ func CreateNewRPCServer(database *db.Database, rpc_port uint, fqdn *string, ssl_
 	json_rpc_server.RegisterCodec(json.NewCodec(), "application/json;charset=UTF-8")
 	json_rpc_server.RegisterService(&Session{Database: database}, "")
 	json_rpc_server.RegisterService(&User{Database: database}, "")
+	json_rpc_server.RegisterService(&RPC{}, "")
 
 	// Der RPC XML Server wird erstellt
 	xml_rpc_server := rpc.NewServer()
 	xml_rpc_server.RegisterCodec(xml.NewCodec(), "application/xml")
 	xml_rpc_server.RegisterService(&Session{Database: database}, "")
 	xml_rpc_server.RegisterService(&User{Database: database}, "")
+	xml_rpc_server.RegisterService(&RPC{}, "")
 
 	// Der Webserver wird erstellt
 	router := mux.NewRouter()
