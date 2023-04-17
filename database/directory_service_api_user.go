@@ -131,6 +131,47 @@ func (obj *Database) GetAllMetaUserGroupsByDirectoryApiUser(filter_mode base.Get
 }
 
 /*
+Wird verwendet um zu überprüfen ob der Direcotry Service API-User exestiert und aktiv ist
+*/
+func _AuthAndValidateDirectoryAPIUser(db *Database, pre_finger_print string, session_req base.RequestMetaDataSession) (bool, error) {
+	var dsid int64
+	var dsauid int64
+
+	if err := db.db.QueryRow(SQLITE_CHECK_SERVICE_API_USER_CREDENTIALS, base.PrepareText(pre_finger_print)).Scan(&dsid, &dsauid); err != nil {
+		if err.Error() != "sql: no rows in result set" {
+			return false, fmt.Errorf("_AuthAndValidateDirectoryAPIUser: 1:" + err.Error())
+		}
+		return false, nil
+	}
+
+	return dsid > int64(0) && dsauid > int64(0), nil
+}
+
+func (obj *Database) AuthAndValidateDirectoryAPIUser(pre_finger_print string, session_req base.RequestMetaDataSession) (bool, error) {
+	// Es wird geprüft ob der Token 64 Zeichen lang ist
+	is_validate_finger_print, pre_finger_print := validateCertFingerprintDBEntry(pre_finger_print)
+	if !is_validate_finger_print {
+		return false, fmt.Errorf("AuthAndValidateDirectoryAPIUser: invalid fingerprint")
+	}
+
+	// Der Threadlock wird ausgeführt
+	obj.lock.Lock()
+
+	// Die Eigentliche Funktion wird aufgeruden
+	check_result, err := _AuthAndValidateDirectoryAPIUser(obj, pre_finger_print, session_req)
+	if err != nil {
+		obj.lock.Unlock()
+		return false, fmt.Errorf("AuthAndValidateDirectoryAPIUser: 1: " + err.Error())
+	}
+
+	// Der Threadlock wird freigegeben
+	obj.lock.Unlock()
+
+	// Die Daten werden zurückgegeben
+	return check_result, nil
+}
+
+/*
 Wird verwendet um einen Dienste API-Benutzer zu Authentifizieren
 */
 func (obj *Database) ValidateDirectoryAPIUserAndGetProcessId(verify_cert_fingerprint_unp string, user_agent string, host string, accept string, encodings string, connection string, clen string, content_type string, source_ip string, source_port string, function_name string, session_req base.RequestMetaDataSession) (bool, *base.DirectoryServiceProcess, error) {

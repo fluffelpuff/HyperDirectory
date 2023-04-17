@@ -13,6 +13,7 @@ import (
 
 	"github.com/fluffelpuff/HyperDirectory/base"
 	db "github.com/fluffelpuff/HyperDirectory/database"
+	"github.com/fluffelpuff/HyperDirectory/lunasockets"
 
 	"github.com/divan/gorilla-xmlrpc/xml"
 	"github.com/gorilla/mux"
@@ -155,7 +156,7 @@ func CreateNewHTTPSessionRequestEntryAndGet(t *db.Database, r *http.Request, fun
 }
 
 // Wird verwendet um eine Metadaten Sitzung zu schlißen
-func CloseSessionRequest(t *db.Database, r *http.Request, request_session *base.RequestMetaDataSession, warning *string, errort error) {
+func CloseSessionRequest(t *db.Database, request_session *base.RequestMetaDataSession, warning *string, errort error) {
 	// Es wird eine Anfrage an die Datenbank gestellt um den Request zu schließen
 	if err := t.CloseEntrySessionRequest(request_session, warning, errort); err != nil {
 		fmt.Println("Unkown internal error: " + err.Error())
@@ -182,6 +183,18 @@ func CreateNewRPCServer(database *db.Database, rpc_port uint, fqdn *string, ssl_
 	xml_rpc_server.RegisterService(&User{Database: database}, "")
 	xml_rpc_server.RegisterService(&RPC{}, "")
 
+	// Der LunaSockets Socket wird erstellt
+	hyper_rpc_server := lunasockets.NewLunaSocket()
+	/*if err := hyper_rpc_server.RegisterService(&Session{Database: database}); err != nil {
+		return nil, fmt.Errorf("CreateNewRPCServer: " + err.Error())
+	}*/
+	if err := hyper_rpc_server.RegisterService(&User{Database: database}); err != nil {
+		return nil, fmt.Errorf("CreateNewRPCServer: " + err.Error())
+	}
+	/*if err := hyper_rpc_server.RegisterService(&RPC{}); err != nil {
+		return nil, fmt.Errorf("CreateNewRPCServer: " + err.Error())
+	}*/
+
 	// Der Webserver wird erstellt
 	router := mux.NewRouter()
 
@@ -195,6 +208,9 @@ func CreateNewRPCServer(database *db.Database, rpc_port uint, fqdn *string, ssl_
 
 	// Der XML Endpunkt wird registriert
 	router.Handle("/xmlrpc", xml_rpc_server)
+
+	// Der WS Endpunkt wird registriert
+	router.HandleFunc("/wsrpc", hyper_rpc_server.ServeHTTPToWebSocket)
 
 	// Das Rückgabeobjekt wird erzeugt
 	return_obj := RestAPIServer{Database: database}

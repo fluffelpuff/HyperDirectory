@@ -19,6 +19,7 @@ require (
 require (
 	github.com/ecies/go/v2 v2.0.5
 	github.com/ethereum/go-ethereum v1.11.5
+	github.com/fxamacker/cbor v1.5.1
 	github.com/fxamacker/cbor/v2 v2.4.0
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.0

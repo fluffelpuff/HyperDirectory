@@ -13,6 +13,10 @@ type KeyPair struct {
 	PrivateKey string
 }
 
+type MasterKeyPair KeyPair
+
+type LoginCredentialsKeyPiar KeyPair
+
 func IsSecp256k1PublicKey(pubKey string) bool {
 	// Es wird geprüft ob die Länge des Hexstrings korrekt ist
 	if len(pubKey) != 66 {
@@ -79,6 +83,156 @@ func ECIESSecp256k1PublicKeyEncryptBytes(pubkey string, data []byte) (string, er
 	// Die Verschlüsselten Daten werden zurückgegeben
 	hexed_ecrypted_data := hex.EncodeToString(ecrypted)
 	return hexed_ecrypted_data, nil
+}
+
+func (pk *LoginCredentialsKeyPiar) ECIESSecp256k1PublicKeyEncryptString(data string) (string, error) {
+	// Es wird geprüft ob es sich um einen Öffentlichen schlüssel handelt
+	if !IsSecp256k1PublicKey(pk.PublicKey) {
+		return "", fmt.Errorf("ECIESSecp256k1PublicKeyEncryptString: invalid public key")
+	}
+
+	// Es wird versucht den Öffentlichen Schlüssel zu dekodieren
+	decoded_pkey, err := seck1ecies.NewPublicKeyFromHex(pk.PublicKey)
+	if err != nil {
+		return "", err
+	}
+
+	// Verschlüsselt die Nachricht
+	ecrypted, err := seck1ecies.Encrypt(decoded_pkey, []byte(data))
+	if err != nil {
+		return "", fmt.Errorf("A:" + err.Error())
+	}
+
+	// Die Verschlüsselten Daten werden zurückgegeben
+	hexed_ecrypted_data := hex.EncodeToString(ecrypted)
+	return hexed_ecrypted_data, nil
+}
+
+func (pk *LoginCredentialsKeyPiar) ECIESSecp256k1PublicKeyEncryptBytes(data []byte) (string, error) {
+	// Es wird geprüft ob es sich um einen Öffentlichen schlüssel handelt
+	if !IsSecp256k1PublicKey(pk.PublicKey) {
+		return "", fmt.Errorf("ECIESSecp256k1PublicKeyEncryptString: invalid public key")
+	}
+
+	// Es wird versucht den Öffentlichen Schlüssel zu dekodieren
+	decoded_pkey, err := seck1ecies.NewPublicKeyFromHex(pk.PublicKey)
+	if err != nil {
+		return "", err
+	}
+
+	// Verschlüsselt die Nachricht
+	ecrypted, err := seck1ecies.Encrypt(decoded_pkey, data)
+	if err != nil {
+		return "", fmt.Errorf("A:" + err.Error())
+	}
+
+	// Die Verschlüsselten Daten werden zurückgegeben
+	hexed_ecrypted_data := hex.EncodeToString(ecrypted)
+	return hexed_ecrypted_data, nil
+}
+
+func (pk *MasterKeyPair) ECIESSecp256k1PublicKeyEncryptString(data string) (string, error) {
+	// Es wird geprüft ob es sich um einen Öffentlichen schlüssel handelt
+	if !IsSecp256k1PublicKey(pk.PublicKey) {
+		return "", fmt.Errorf("ECIESSecp256k1PublicKeyEncryptString: invalid public key")
+	}
+
+	// Es wird versucht den Öffentlichen Schlüssel zu dekodieren
+	decoded_pkey, err := seck1ecies.NewPublicKeyFromHex(pk.PublicKey)
+	if err != nil {
+		return "", err
+	}
+
+	// Verschlüsselt die Nachricht
+	ecrypted, err := seck1ecies.Encrypt(decoded_pkey, []byte(data))
+	if err != nil {
+		return "", fmt.Errorf("A:" + err.Error())
+	}
+
+	// Die Verschlüsselten Daten werden zurückgegeben
+	hexed_ecrypted_data := hex.EncodeToString(ecrypted)
+	return hexed_ecrypted_data, nil
+}
+
+func (pk *MasterKeyPair) ECIESSecp256k1PublicKeyEncryptBytes(data []byte) (string, error) {
+	// Es wird geprüft ob es sich um einen Öffentlichen schlüssel handelt
+	if !IsSecp256k1PublicKey(pk.PublicKey) {
+		return "", fmt.Errorf("ECIESSecp256k1PublicKeyEncryptString: invalid public key")
+	}
+
+	// Es wird versucht den Öffentlichen Schlüssel zu dekodieren
+	decoded_pkey, err := seck1ecies.NewPublicKeyFromHex(pk.PublicKey)
+	if err != nil {
+		return "", err
+	}
+
+	// Verschlüsselt die Nachricht
+	ecrypted, err := seck1ecies.Encrypt(decoded_pkey, data)
+	if err != nil {
+		return "", fmt.Errorf("A:" + err.Error())
+	}
+
+	// Die Verschlüsselten Daten werden zurückgegeben
+	hexed_ecrypted_data := hex.EncodeToString(ecrypted)
+	return hexed_ecrypted_data, nil
+}
+
+func (pk *KeyPair) ECIESSecp256k1PublicKeyEncryptString(data string) (string, error) {
+	// Es wird geprüft ob es sich um einen Öffentlichen schlüssel handelt
+	if !IsSecp256k1PublicKey(pk.PublicKey) {
+		return "", fmt.Errorf("ECIESSecp256k1PublicKeyEncryptString: invalid public key")
+	}
+
+	// Es wird versucht den Öffentlichen Schlüssel zu dekodieren
+	decoded_pkey, err := seck1ecies.NewPublicKeyFromHex(pk.PublicKey)
+	if err != nil {
+		return "", err
+	}
+
+	// Verschlüsselt die Nachricht
+	ecrypted, err := seck1ecies.Encrypt(decoded_pkey, []byte(data))
+	if err != nil {
+		return "", fmt.Errorf("A:" + err.Error())
+	}
+
+	// Die Verschlüsselten Daten werden zurückgegeben
+	hexed_ecrypted_data := hex.EncodeToString(ecrypted)
+	return hexed_ecrypted_data, nil
+}
+
+func (pk *KeyPair) ECIESSecp256k1PublicKeyEncryptBytes(data []byte) (string, error) {
+	// Es wird geprüft ob es sich um einen Öffentlichen schlüssel handelt
+	if !IsSecp256k1PublicKey(pk.PublicKey) {
+		return "", fmt.Errorf("ECIESSecp256k1PublicKeyEncryptString: invalid public key")
+	}
+
+	// Es wird versucht den Öffentlichen Schlüssel zu dekodieren
+	decoded_pkey, err := seck1ecies.NewPublicKeyFromHex(pk.PublicKey)
+	if err != nil {
+		return "", err
+	}
+
+	// Verschlüsselt die Nachricht
+	ecrypted, err := seck1ecies.Encrypt(decoded_pkey, data)
+	if err != nil {
+		return "", fmt.Errorf("A:" + err.Error())
+	}
+
+	// Die Verschlüsselten Daten werden zurückgegeben
+	hexed_ecrypted_data := hex.EncodeToString(ecrypted)
+	return hexed_ecrypted_data, nil
+}
+
+func (pk *LoginCredentialsKeyPiar) SignString(data_to_sign string) (string, error) {
+	return "", nil
+}
+
+func (pk *MasterKeyPair) SignString(data_to_sign string) (string, error) {
+	return "", nil
+}
+
+func (pk *KeyPair) SignString(data_to_sign string) (string, error) {
+	return "", nil
 }
 
 func CreateRandomKeypair() (*KeyPair, error) {

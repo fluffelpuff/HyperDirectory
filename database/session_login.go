@@ -90,22 +90,22 @@ func (obj *Database) CreateNewUserSessionByUID(userid int64, service_data *base.
 /*
 Wird verwendet um den Aktuellen Login Process Hash abzurufen
 */
-func (obj *Database) CreateNewLoginProcess(public_login_cred_key string, public_client_session_key string, service_data *base.DirectoryServiceProcess, session_req base.RequestMetaDataSession) (*base.LoginProcessKeyCreationDbResult, error) {
+func (obj *Database) CreateNewLoginProcessForUser(public_login_cred_key string, public_client_session_key string, service_data *base.DirectoryServiceProcess, session_req base.RequestMetaDataSession) (*base.LoginProcessKeyCreationDbResult, error) {
 	// Es wird geprüft ob das Datenbank Objekt verfügbar ist
 	if obj.db == nil {
-		return nil, fmt.Errorf("CreateNewLoginProcess: internal db error")
+		return nil, fmt.Errorf("CreateNewLoginProcessForUser: internal db error")
 	}
 
 	// Es wird Geprüft ob es sich um einen zulässigen Master Schlüssel handelt
 	is_validate_master_pkey, prep_credt_pkey := validatePublicKeyDBEntry(public_login_cred_key)
 	if !is_validate_master_pkey {
-		return nil, fmt.Errorf("CreateNewLoginProcess: invalid public master key")
+		return nil, fmt.Errorf("CreateNewLoginProcessForUser: invalid public master key")
 	}
 
 	// Es wird geprüft es sich um einen zulässigen Inhaber Schlüssel handelt
 	is_validate_owner_pkey, pre_session_pkey := validatePublicKeyDBEntry(public_client_session_key)
 	if !is_validate_owner_pkey {
-		return nil, fmt.Errorf("CreateNewLoginProcess: invalid public session key")
+		return nil, fmt.Errorf("CreateNewLoginProcessForUser: invalid public session key")
 	}
 
 	// Die Aktuelle sowie die Ablaufzeit wird ermittelt
@@ -114,7 +114,7 @@ func (obj *Database) CreateNewLoginProcess(public_login_cred_key string, public_
 	// Es wird ein neues Schlüsselpaar erzeugt, dieses Schlüsselpaar wird verwendet um den LoginProzess abzuschlißen
 	key_pair, err := hdcrypto.CreateRandomKeypair()
 	if err != nil {
-		return nil, fmt.Errorf("CreateNewLoginProcess: " + err.Error())
+		return nil, fmt.Errorf("CreateNewLoginProcessForUser: " + err.Error())
 	}
 
 	// Der Threadlock wird verwendet
@@ -125,7 +125,7 @@ func (obj *Database) CreateNewLoginProcess(public_login_cred_key string, public_
 	user_db_id := int64(-1)
 	if err := obj.db.QueryRow(SQLITE_GET_LOGIN_CREDENTIALS_ACCEPTED_BY_PUB_KEY, prep_credt_pkey, service_data.DbServiceId).Scan(&has_found, &user_db_id); err != nil {
 		obj.lock.Unlock()
-		return nil, fmt.Errorf("CreateNewLoginProcess: " + err.Error())
+		return nil, fmt.Errorf("CreateNewLoginProcessForUser: " + err.Error())
 	}
 	if has_found != "FOUND" || user_db_id == -1 {
 		obj.lock.Unlock()
@@ -136,33 +136,33 @@ func (obj *Database) CreateNewLoginProcess(public_login_cred_key string, public_
 	is_ok, err := _checkIsKeyInDb(obj, pre_session_pkey, uint64(service_data.DbServiceId))
 	if err != nil {
 		obj.lock.Unlock()
-		return nil, fmt.Errorf("CreateNewLoginProcess: " + err.Error())
+		return nil, fmt.Errorf("CreateNewLoginProcessForUser: " + err.Error())
 	}
 
 	// Sollte der Schlüssel bererits verwendet werden, wird der Vorgang abgebrochen
 	if !is_ok {
 		obj.lock.Unlock()
-		return nil, fmt.Errorf("CreateNewLoginProcess: aborted, key double using not allowed")
+		return nil, fmt.Errorf("CreateNewLoginProcessForUser: aborted, key double using not allowed")
 	}
 
 	// Es wird geprüft ob der Benutzer berechtigt ist sich anzumelden
 	user_authed, user_granted, err := _validateUserCredentialsPKey(obj, prep_credt_pkey, service_data)
 	if err != nil {
 		obj.lock.Unlock()
-		return nil, fmt.Errorf("CreateNewLoginProcess: A" + err.Error())
+		return nil, fmt.Errorf("CreateNewLoginProcessForUser: A" + err.Error())
 	}
 
 	// Sollte der Benutzer nicht berechtigt sein, wird der Vorgang abgebrochen
 	if !user_authed || !user_granted {
 		obj.lock.Unlock()
-		return nil, fmt.Errorf("CreateNewLoginProcess: y: operation for user not granted")
+		return nil, fmt.Errorf("CreateNewLoginProcessForUser: y: operation for user not granted")
 	}
 
 	// Es wird ein neuer Sitzungseintrag in der Datenbank erzeugt
 	_, err = obj.db.Exec(SQLITE_WRITE_NEW_LOGIN_PROCESS, user_db_id, service_data.DbServiceId, pre_session_pkey, key_pair.PublicKey, key_pair.PrivateKey, current_time, service_data.DbServiceUserId, session_req.DbEntryId, -2)
 	if err != nil {
 		obj.lock.Unlock()
-		return nil, fmt.Errorf("CreateNewLoginProcess: " + err.Error())
+		return nil, fmt.Errorf("CreateNewLoginProcessForUser: " + err.Error())
 	}
 
 	// Der Threadlock wird freigegeben
