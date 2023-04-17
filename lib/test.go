@@ -13,7 +13,6 @@ func main() {
 		fmt.Println(err)
 		return
 	}
-
 	for {
 		time.Sleep(time.Millisecond * 1)
 	}

@@ -83,6 +83,8 @@ func CreateNewRPCClient(url_str string) (*RpcClient, error) {
 		params[i] = v
 	}
 	sess.CallFunction("User.TestFunction", params)
+	sess.SendPing()
+	fmt.Println("YOLO")
 
 	// Das Objekt wurde erfolgreich fertigestellt
 	return &res_value, nil

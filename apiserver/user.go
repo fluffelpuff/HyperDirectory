@@ -463,8 +463,8 @@ func (t *User) CreateNewEMailBasedUserNoneRoot(r *http.Request, args *base.Creat
 	return nil
 }
 
-func (t *User) TestFunction(args *hws.TestObject, reply *string) error {
-	fmt.Println(args)
+func (t *User) TestFunction(request *http.Request, args *hws.TestObject, reply *string) error {
+	fmt.Println(request)
 	*reply = "hws.TestObject{}"
 	return nil
 }

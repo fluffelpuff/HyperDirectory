@@ -3,6 +3,7 @@ package lunasockets
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	hdcrypto "github.com/fluffelpuff/HyperDirectory/crypto"
 	"github.com/fxamacker/cbor/v2"
@@ -47,7 +48,7 @@ func (obj *LunaSocketSession) CallFunction(method string, parms []interface{}) (
 
 	// Die Sitzung wird Registriert
 	obj._master._mu.Lock()
-	obj._master._sessions[rand_id] = resolved_function
+	obj._master._rpc_sessions[rand_id] = resolved_function
 	obj._master._mu.Unlock()
 
 	// Die Anfrage wird an den Server gesendet
@@ -63,12 +64,45 @@ func (obj *LunaSocketSession) CallFunction(method string, parms []interface{}) (
 	return nil, nil
 }
 
-// Wird verwendet um eine Verbindung mit einem Stream herzustellen
-func (obj *LunaSocketSession) OpenStreamSession(port uint64) error {
-	return nil
-}
-
 // Wird verwendet um einen Ping zu senden
-func (obj *LunaSocketSession) SendPing() error {
-	return nil
+func (obj *LunaSocketSession) SendPing() (uint64, error) {
+	// Es wird eine Zuällige ID erzeugt
+	rand_id := hdcrypto.RandomBase32Secret()
+
+	// Das Reqeust Paket wird gebaut
+	request_object := IoFlowPackage{Type: "ping", Body: "PING", Id: rand_id}
+
+	// Die Anfrage wird mittels CBOR umgewandelt
+	data, err := cbor.Marshal(&request_object)
+	if err != nil {
+		return 0, err
+	}
+
+	// Die Aktuelle Zeit wird erfasst
+	c_time := time.Now().Unix()
+
+	// Diese Channel erhält die Antwort
+	w_channel := make(chan uint64)
+
+	// Die Funktion welche aufgerufen wird sobald die Antwort erhalten wurde
+	resolved_function := func() {
+		w_channel <- uint64(time.Now().Unix() - c_time)
+	}
+
+	// Die Sitzung wird Registriert
+	obj._master._mu.Lock()
+	obj._master._ping_sessions[rand_id] = resolved_function
+	obj._master._mu.Unlock()
+
+	// Die Anfrage wird an den Server gesendet
+	err = obj._ws_conn.WriteMessage(websocket.BinaryMessage, data)
+	if err != nil {
+		return 0, err
+	}
+
+	// Es wird auf die Antwort gewartet
+	resolved_total := <-w_channel
+
+	// Die Zeit die dieser Ping benötigt hat, wird ermittelt
+	return resolved_total, nil
 }

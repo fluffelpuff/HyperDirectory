@@ -49,6 +49,27 @@ func (obj *LunaSockets) _handleRPC(conn *websocket.Conn, id string, rpc_data Rpc
 	return nil
 }
 
+// Diese Funktion wird ausgeführt sobald ein Ping Paket eingetroffen ist
+func (obj *LunaSockets) _handlePING(conn *websocket.Conn, id string, ping_data string) error {
+	// Es wird ein Pong Paket gebaut und an die gegenseite zurückgesendet
+	request_object := IoFlowPackage{Type: "pong", Body: ping_data, Id: id}
+
+	// Die Anfrage wird mittels CBOR umgewandelt
+	data, err := cbor.Marshal(&request_object)
+	if err != nil {
+		return err
+	}
+
+	// Das Pong Paket wird zurück an den absendenen Client gesendet
+	err = conn.WriteMessage(websocket.BinaryMessage, data)
+	if err != nil {
+		return err
+	}
+
+	// Der Vorgang wurde ohne fehler durchgeführt
+	return nil
+}
+
 // Diese Funktion ließt aus den WS aus
 func (obj *LunaSockets) _wrappWS(conn *websocket.Conn) error {
 	// Diese Funktion wird ausgeführt um eintreffende Nachrichten zu lesen
@@ -102,7 +123,7 @@ func (obj *LunaSockets) _wrappWS(conn *websocket.Conn) error {
 		case "rpc_response":
 			// Es wird geprüft ob es eine Sitzung mit dieser Id gibt
 			obj._mu.Lock()
-			resolved, ok := obj._sessions[msg.Id]
+			resolved, ok := obj._rpc_sessions[msg.Id]
 			if !ok {
 				obj._mu.Unlock()
 				fmt.Println("UNKOWN_SESSION")
@@ -127,7 +148,7 @@ func (obj *LunaSockets) _wrappWS(conn *websocket.Conn) error {
 			}
 
 			// Die ID wird wieder entfernt
-			delete(obj._sessions, msg.Id)
+			delete(obj._rpc_sessions, msg.Id)
 
 			// Die Funktion wird in einem eigenen Thread aufgerufen
 			go resolved(readed_response)
@@ -141,9 +162,42 @@ func (obj *LunaSockets) _wrappWS(conn *websocket.Conn) error {
 		case "stream_data_response":
 			continue
 		case "ping":
-			continue
+			// Das Paket wird neu eingelesen
+			var complete_package IoFlowPackage
+			err = cbor.Unmarshal(data, &complete_package)
+			if err != nil {
+				fmt.Println(err)
+			}
+
+			// Der Ping Handler wird ausgeführt
+			go obj._handlePING(conn, complete_package.Id, complete_package.Body)
 		case "pong":
-			continue
+			// Es wird geprüft ob es eine Sitzung mit dieser Id gibt
+			obj._mu.Lock()
+			resolved, ok := obj._ping_sessions[msg.Id]
+			if !ok {
+				fmt.Println("W:", err)
+				obj._mu.Unlock()
+				fmt.Println("UNKOWN_SESSION")
+				continue
+			}
+
+			// Das Paket wird neu eingelesen
+			var complete_package IoFlowPackage
+			err = cbor.Unmarshal(data, &complete_package)
+			if err != nil {
+				fmt.Println("Y:", err)
+				obj._mu.Unlock()
+				fmt.Println(err)
+				continue
+			}
+
+			// Die ID wird wieder entfernt
+			delete(obj._rpc_sessions, msg.Id)
+
+			// Die Funktion wird in einem eigenen Thread aufgerufen
+			go resolved()
+			obj._mu.Unlock()
 		default:
 			fmt.Println("CORRUPT_CONNECTION")
 		}

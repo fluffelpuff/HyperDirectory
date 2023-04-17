@@ -210,7 +210,21 @@ func CreateNewRPCServer(database *db.Database, rpc_port uint, fqdn *string, ssl_
 	router.Handle("/xmlrpc", xml_rpc_server)
 
 	// Der WS Endpunkt wird registriert
-	router.HandleFunc("/wsrpc", hyper_rpc_server.ServeHTTPToWebSocket)
+	router.HandleFunc("/wsrpc", func(w http.ResponseWriter, r *http.Request) {
+		// Die Verbindung wird zu einer Luna Websocket Sitzung geupgradet
+		server_sess, err := hyper_rpc_server.UpgradeHTTPToLunaWebSocket(w, r)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		// Diese Funktion wird als Thread ausgeführt, sie wird für das Pining verwendet
+
+		// Die Verbindung wird Served
+		if err := server_sess.Serve(); err != nil {
+			fmt.Println(err)
+		}
+	})
 
 	// Das Rückgabeobjekt wird erzeugt
 	return_obj := RestAPIServer{Database: database}

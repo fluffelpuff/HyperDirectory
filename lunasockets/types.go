@@ -30,4 +30,8 @@ type TestObject struct {
 	Value string
 }
 
+type Request struct {
+}
+
 type LunaRpcResponseFunction func(response RpcResponse)
+type LunaPingResponseFunction func()

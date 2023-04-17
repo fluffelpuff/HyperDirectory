@@ -14,12 +14,20 @@ type RpcRequestCodec struct {
 }
 
 func (c *RpcRequestCodec) ReadRequestHeader(r *rpc.Request) error {
+	if c.closed {
+		return fmt.Errorf("ReadRequestHeader: Connection is closed")
+	}
+
 	r.ServiceMethod = c.data.Method
 	r.Seq = uint64(c.data.ID)
 	return nil
 }
 
 func (c *RpcRequestCodec) ReadRequestBody(x interface{}) error {
+	if c.closed {
+		return fmt.Errorf("ReadRequestBody: Connection is closed")
+	}
+
 	// Die Daten werden in Bytes umgewandelt
 	un, err := json.Marshal(c.data)
 	if err != nil {
@@ -31,6 +39,10 @@ func (c *RpcRequestCodec) ReadRequestBody(x interface{}) error {
 }
 
 func (c *RpcRequestCodec) WriteResponse(r *rpc.Response, x interface{}) error {
+	if c.closed {
+		return fmt.Errorf("WriteResponse: Connection is closed")
+	}
+
 	if x == nil {
 		return fmt.Errorf("")
 	}
@@ -52,10 +64,17 @@ func (c *RpcRequestCodec) WriteResponse(r *rpc.Response, x interface{}) error {
 }
 
 func (c *RpcRequestCodec) Close() error {
+	if c.closed {
+		return fmt.Errorf("Close: Connection is closed")
+	}
 	c.closed = true
 	return nil
 }
 
 func (c *RpcRequestCodec) GetResponse() (interface{}, error) {
+	if c.closed {
+		return nil, fmt.Errorf("GetResponse: Connection is closed")
+	}
+
 	return c.resolve, nil
 }

@@ -91,3 +91,4 @@ hyperdirectory
 resc/
 lib/lib
 .DS_Store
+tests/tests
