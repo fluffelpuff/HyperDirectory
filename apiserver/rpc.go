@@ -167,7 +167,46 @@ func CloseSessionRequest(t *db.Database, request_session *base.RequestMetaDataSe
 }
 
 // Wird verwendet um eine LunaRPCWebsocket Sitzung aus einer HTTP Sitzung zu erstellen
-func ServeUpgrageToLunaRPCWebsocket(hyper_rpc_server *lunasockets.LunaSockets, database *db.Database, w http.ResponseWriter, r *http.Request) {
+func ServeUpgrageToLunaRPCWebsocket(hyper_rpc_server *lunasockets.LunaSockets, db *db.Database, w http.ResponseWriter, r *http.Request) {
+	// Es wird geprüft ob die Zertifikate vorhanden
+	if len(r.TLS.PeerCertificates) == 0 {
+		log.Fatalln("no verification certificates available")
+		return
+	}
+
+	// Extrahieren Sie den Fingerprint des Serverzertifikats
+	fingerprint := sha256.Sum256(r.TLS.PeerCertificates[0].Raw)
+	hex_fingerprint := hex.EncodeToString(fingerprint[:])
+
+	// Die Metadaten der Verbindung werden ermittelt
+	connection, clen, content_type := r.Header.Get("Connection"), r.Header.Get("Content-Length"), r.Header.Get("Content-Type")
+	user_agent, host, accept, encodings := r.Header.Get("User-Agent"), r.Header.Get("Host"), r.Header.Get("Accept"), r.Header.Get("Accept-Encoding")
+
+	// Die IP-Adresse der Anfragendenseite wird ermittelt
+	ip, port, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		log.Fatalln("invalid port")
+		return
+	}
+	netIP := net.ParseIP(ip)
+	if netIP == nil {
+		log.Fatalln("invalid ip-address")
+		return
+	}
+
+	// Es wird eine Anfrage an die Datenbank gestellt um die Live Sitzung zu erstellen
+	auth, session, err := db.ValidateDirectoryAPIUserAndGetLiveSession(hex_fingerprint, user_agent, host, accept, encodings, connection, clen, content_type, ip, port)
+	if err != nil {
+		log.Fatalln("internal error:" + err.Error())
+		return
+	}
+
+	// Es wird geprüft ob der Benutzer verifiziert wurde
+	if !auth {
+		log.Printf("not authorized %s user\n", hex_fingerprint)
+		return
+	}
+
 	// Die Verbindung wird zu einer Luna Websocket Sitzung geupgradet
 	server_sess, err := hyper_rpc_server.UpgradeHTTPToLunaWebSocket(w, r)
 	if err != nil {
@@ -175,7 +214,11 @@ func ServeUpgrageToLunaRPCWebsocket(hyper_rpc_server *lunasockets.LunaSockets, d
 		return
 	}
 
-	// Diese Funktion wird als Thread ausgeführt, sie wird für das Pining verwendet
+	// Die Sitzung wird zwischengspeichert
+	server_sess.Session.AddOutParameter(session)
+
+	// Der Log text wird angezeigt
+	log.Printf("new websocket connection accepted from %s\n", hex_fingerprint)
 
 	// Die Verbindung wird Served
 	if err := server_sess.Serve(); err != nil {
@@ -205,12 +248,6 @@ func CreateNewRPCServer(database *db.Database, rpc_port uint, fqdn *string, ssl_
 	if err := hyper_rpc_server.RegisterService(&User{Database: database}); err != nil {
 		return nil, fmt.Errorf("CreateNewRPCServer: " + err.Error())
 	}
-	/*if err := hyper_rpc_server.RegisterService(&Session{Database: database}); err != nil {
-		return nil, fmt.Errorf("CreateNewRPCServer: " + err.Error())
-	}*/
-	/*if err := hyper_rpc_server.RegisterService(&RPC{}); err != nil {
-		return nil, fmt.Errorf("CreateNewRPCServer: " + err.Error())
-	}*/
 
 	// Der Webserver wird erstellt
 	router := mux.NewRouter()
@@ -228,7 +265,6 @@ func CreateNewRPCServer(database *db.Database, rpc_port uint, fqdn *string, ssl_
 
 	// Der WS Endpunkt wird registriert
 	router.HandleFunc("/wsrpc", func(w http.ResponseWriter, r *http.Request) {
-		// Die Verbindung wird zu einer Luna RPC Websocket verbindung geupgraded
 		ServeUpgrageToLunaRPCWebsocket(hyper_rpc_server, database, w, r)
 	})
 

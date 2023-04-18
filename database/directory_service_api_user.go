@@ -172,7 +172,7 @@ func (obj *Database) AuthAndValidateDirectoryAPIUser(pre_finger_print string, se
 }
 
 /*
-Wird verwendet um einen Dienste API-Benutzer zu Authentifizieren
+Wird verwendet um einen Dienste API-Benutzer zu Authentifizieren und einen Request Eintrag zu erstellen
 */
 func (obj *Database) ValidateDirectoryAPIUserAndGetProcessId(verify_cert_fingerprint_unp string, user_agent string, host string, accept string, encodings string, connection string, clen string, content_type string, source_ip string, source_port string, function_name string, session_req base.RequestMetaDataSession) (bool, *base.DirectoryServiceProcess, error) {
 	// Es wird geprüft ob der Token 64 Zeichen lang ist
@@ -251,4 +251,38 @@ func (obj *Database) ValidateDirectoryAPIUserAndGetProcessId(verify_cert_fingerp
 
 	// Die DirectoryServiceProcess Daten werden zurückgegben
 	return true, &resturn, nil
+}
+
+/*
+Wird verwendet um einen Dienste API-Benutzer zu Authentifizieren und eine Live Sitzung zu erstellen
+*/
+func (obj *Database) ValidateDirectoryAPIUserAndGetLiveSession(verify_cert_fingerprint_unp string, user_agent string, host string, accept string, encodings string, connection string, clen string, content_type string, source_ip string, source_port string) (bool, *base.LiveRPCSession, error) {
+	// Es wird geprüft ob der Token 64 Zeichen lang ist
+	is_validate_finger_print, pre_finger_print := validateCertFingerprintDBEntry(verify_cert_fingerprint_unp)
+	if !is_validate_finger_print {
+		return false, nil, fmt.Errorf("ValidateDirectoryAPIUserAndGetProcessId: invalid fingerprint")
+	}
+
+	// Der Threadlock wird ausgeführt
+	obj.lock.Lock()
+
+	// Es wird geprüft ob der API Benutzer exestiert
+	var dsid int64
+	var dsauid int64
+	if err := obj.db.QueryRow(SQLITE_CHECK_SERVICE_API_USER_CREDENTIALS, base.PrepareText(pre_finger_print)).Scan(&dsid, &dsauid); err != nil {
+		obj.lock.Unlock()
+		if err.Error() != "sql: no rows in result set" {
+			return false, nil, fmt.Errorf("ValidateDirectoryAPIUserAndGetProcessId: 1:" + err.Error())
+		}
+		return false, nil, nil
+	}
+	if dsauid == 0 {
+		obj.lock.Unlock()
+		return false, nil, nil
+	}
+
+	// Der Threadlock wird freigegeben
+	obj.lock.Unlock()
+
+	return true, nil, nil
 }

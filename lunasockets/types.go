@@ -1,19 +1,22 @@
 package lunasockets
 
+import "net/http"
+
 type FirstCheck struct {
 	Id   string
 	Type string
 }
 
 type RpcRequest struct {
-	JSONRPC string        `json:"jsonrpc"`
-	Method  string        `json:"method"`
-	Params  []interface{} `json:"params"`
-	ID      int           `json:"id"`
+	ProxyPass *http.Header  `json:"proxypass"`
+	Params    []interface{} `json:"params"`
+	JSONRPC   string        `json:"jsonrpc"`
+	Method    string        `json:"method"`
+	ID        int           `json:"id"`
 }
 
 type RpcResponse struct {
-	Error  error
+	Error  *string
 	Result interface{}
 }
 
@@ -35,6 +38,8 @@ type TestStruct struct {
 }
 
 type Request struct {
+	Header        *http.Header
+	OutPassedArgs []interface{}
 }
 
 type LunaRpcResponseFunction func(response RpcResponse)

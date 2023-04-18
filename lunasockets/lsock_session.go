@@ -3,6 +3,8 @@ package lunasockets
 import (
 	"encoding/json"
 	"fmt"
+	"log"
+	"net/http"
 	"time"
 
 	hdcrypto "github.com/fluffelpuff/HyperDirectory/crypto"
@@ -11,13 +13,15 @@ import (
 )
 
 type LunaSocketSession struct {
-	_connected bool
-	_master    *LunaSockets
-	_ws_conn   *websocket.Conn
+	_connected   bool
+	_header      *http.Header
+	_master      *LunaSockets
+	_ws_conn     *websocket.Conn
+	_passed_args []interface{}
 }
 
 // Wird verwendet um einen befehl innerhalb einer RPC Sitzung auszuführen
-func (obj *LunaSocketSession) CallFunction(method string, parms []interface{}) ([]interface{}, error) {
+func (obj *LunaSocketSession) CallFunction(method string, parms []interface{}) (interface{}, error) {
 	// Es wird eine Zuällige ID erzeugt
 	rand_id := hdcrypto.RandomBase32Secret()
 
@@ -58,11 +62,14 @@ func (obj *LunaSocketSession) CallFunction(method string, parms []interface{}) (
 		return nil, err
 	}
 
+	// Es wird ein Log eintrag erzeugt
+	log.Printf("rpc-request '%s' send\n", rand_id)
+
 	// Es wird auf die Antwort gewartet
 	resolved_total := <-w_channel
-	fmt.Println(resolved_total.Result)
 
-	return nil, nil
+	// Die Daten werden zurückgeben
+	return resolved_total.Result, nil
 }
 
 // Wird verwendet um einen Ping zu senden
@@ -101,6 +108,9 @@ func (obj *LunaSocketSession) SendPing() (uint64, error) {
 		return 0, err
 	}
 
+	// Es wird ein Log eintrag erzeugt
+	log.Printf("ping '%s' send\n", rand_id)
+
 	// Es wird auf die Antwort gewartet
 	resolved_total := <-w_channel
 
@@ -108,7 +118,12 @@ func (obj *LunaSocketSession) SendPing() (uint64, error) {
 	return resolved_total, nil
 }
 
+// Fügt dieser Sitzung einen Parameter hinzu
+func (obj *LunaSocketSession) AddOutParameter(data interface{}) {
+	obj._passed_args = append(obj._passed_args, data)
+}
+
 // Gibt an ob die Verbindung besteht
-func (obj *LunaServerSession) IsConnected() bool {
-	return false
+func (obj *LunaSocketSession) IsConnected() bool {
+	return obj._connected
 }

@@ -78,3 +78,6 @@ type LoginProcessKeyCreationDbResult struct {
 type UserLoginProcessStartResponse struct {
 	EncryptedClientData string
 }
+
+type LiveRPCSession struct {
+}

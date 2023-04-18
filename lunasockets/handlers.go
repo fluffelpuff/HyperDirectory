@@ -3,45 +3,22 @@ package lunasockets
 import (
 	"encoding/json"
 	"fmt"
+	"log"
+	"time"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gorilla/websocket"
 )
 
-// Diese Funktion wird ausgeführt wenn es sich um ein RPC Request handelt
-func (obj *LunaSockets) _handleRPC(conn *websocket.Conn, id string, rpc_data RpcRequest) error {
-	// Es wird geprüt ob es sich um einen Zuläsigen Methoden Namen handelt
-	if !validateFunctionCall(rpc_data.Method) {
-		return fmt.Errorf("invalid function call")
-	}
-
-	// Es wird geprüft ob es sich um eine bekannte Service Funktion handelt
-	ok, service := obj.isValidateServiceFunctionAndGetServiceObject(rpc_data.Method)
-	if !ok {
-		return fmt.Errorf("unkown function or service")
-	}
-
-	// Der Name wird vorbereitet
-	prep_name := getFunctionNameOfCall(rpc_data.Method)
-
-	// Es wird geprüft ob die Variable nicht leer ist
-	if len(prep_name) < 2 {
-		return fmt.Errorf("invalid function call")
-	}
-
-	// Die Funktion wird aufgerufen
-	result, err := callServiceFunction(&Request{}, service, prep_name, rpc_data.Params)
-	if err != nil {
-		return err
-	}
-
+// Diese Funktion schreibt einen Fehler in eine Verbindung
+func writeError(conn *websocket.Conn, id string, errstr string) error {
 	// Die Antwort wird zurückgesendet
-	response := RpcResponse{Result: result, Error: nil}
+	response := RpcResponse{Result: nil, Error: &errstr}
 
-	// Die Daten werden mit JSON codiert
+	// Die Daten werden mit JSON Kodiert
 	un, err := json.Marshal(response)
 	if err != nil {
-		return err
+		return writeError(conn, id, "internal encoding error")
 	}
 
 	// Die Antwort wird vorbereitet
@@ -50,12 +27,79 @@ func (obj *LunaSockets) _handleRPC(conn *websocket.Conn, id string, rpc_data Rpc
 	// Die Date werden mittels CBOR Codiert
 	data, err := cbor.Marshal(&resolve)
 	if err != nil {
-		return err
+		return writeError(conn, id, "internal encoding error")
 	}
 
 	// Die Daten werden an die gegenseite gesendet
 	if err := conn.WriteMessage(websocket.BinaryMessage, data); err != nil {
-		return err
+		return fmt.Errorf("ws writing error")
+	}
+
+	// Der Vorgang wurde erfolgreich durchgeführt
+	return nil
+}
+
+// Diese Funktion wird ausgeführt wenn es sich um ein RPC Request handelt
+func (obj *LunaSockets) _handleRPC(conn *LunaSocketSession, id string, rpc_data RpcRequest) error {
+	// Es wird geprüt ob es sich um einen Zuläsigen Methoden Namen handelt
+	if !validateFunctionCall(rpc_data.Method) {
+		return writeError(conn._ws_conn, id, "invalid function call")
+	}
+
+	// Es wird geprüft ob es sich um eine bekannte Service Funktion handelt
+	ok, service := obj.isValidateServiceFunctionAndGetServiceObject(rpc_data.Method)
+	if !ok {
+		return writeError(conn._ws_conn, id, "unkown function")
+	}
+
+	// Der Name wird vorbereitet
+	prep_name := getFunctionNameOfCall(rpc_data.Method)
+
+	// Es wird geprüft ob die Variable nicht leer ist
+	if len(prep_name) < 2 {
+		return writeError(conn._ws_conn, id, "invalid function call")
+	}
+
+	// Das Request Objekt wird erzeugt
+	req := new(Request)
+
+	// Die Requestdaten werden ausgewertet
+	if rpc_data.ProxyPass != nil {
+		req.Header = rpc_data.ProxyPass
+	} else {
+		req.Header = conn._header
+	}
+
+	// Die Daten werden übertragen
+	req.OutPassedArgs = append(req.OutPassedArgs, conn._passed_args...)
+
+	// Die Funktion wird aufgerufen
+	result, err := callServiceFunction(&Request{}, service, prep_name, rpc_data.Params)
+	if err != nil {
+		return writeError(conn._ws_conn, id, fmt.Sprintf("method '%s' calling error", rpc_data.Method))
+	}
+
+	// Die Antwort wird zurückgesendet
+	response := RpcResponse{Result: result, Error: nil}
+
+	// Die Daten werden mit JSON Kodiert
+	un, err := json.Marshal(response)
+	if err != nil {
+		return writeError(conn._ws_conn, id, "internal encoding error")
+	}
+
+	// Die Antwort wird vorbereitet
+	resolve := IoFlowPackage{Type: "rpc_response", Id: id, Body: string(un)}
+
+	// Die Date werden mittels CBOR Codiert
+	data, err := cbor.Marshal(&resolve)
+	if err != nil {
+		return writeError(conn._ws_conn, id, "internal encoding error")
+	}
+
+	// Die Daten werden an die gegenseite gesendet
+	if err := conn._ws_conn.WriteMessage(websocket.BinaryMessage, data); err != nil {
+		return fmt.Errorf("ws writing error")
 	}
 
 	// Die Antwort wird zurückgegeben
@@ -63,7 +107,7 @@ func (obj *LunaSockets) _handleRPC(conn *websocket.Conn, id string, rpc_data Rpc
 }
 
 // Diese Funktion wird ausgeführt sobald ein Ping Paket eingetroffen ist
-func (obj *LunaSockets) _handlePING(conn *websocket.Conn, id string, ping_data string) error {
+func (obj *LunaSockets) _handlePING(conn *LunaSocketSession, id string, ping_data string) error {
 	// Es wird ein Pong Paket gebaut und an die gegenseite zurückgesendet
 	request_object := IoFlowPackage{Type: "pong", Body: ping_data, Id: id}
 
@@ -74,22 +118,25 @@ func (obj *LunaSockets) _handlePING(conn *websocket.Conn, id string, ping_data s
 	}
 
 	// Das Pong Paket wird zurück an den absendenen Client gesendet
-	err = conn.WriteMessage(websocket.BinaryMessage, data)
+	err = conn._ws_conn.WriteMessage(websocket.BinaryMessage, data)
 	if err != nil {
 		return err
 	}
+
+	// Es wird ein Log eintrag erzeugt
+	log.Printf("pong '%s' send\n", id)
 
 	// Der Vorgang wurde ohne fehler durchgeführt
 	return nil
 }
 
 // Diese Funktion ließt aus den WS aus
-func (obj *LunaSockets) _wrappWS(conn *websocket.Conn) error {
+func (obj *LunaSockets) _wrappWS(conn *LunaSocketSession) error {
 	// Diese Funktion wird ausgeführt um eintreffende Nachrichten zu lesen
 	loop_end := false
 	for !loop_end {
 		// Es wird geprüft ob es sich um einen Zulässigen Typen handelt
-		typ, data, err := conn.ReadMessage()
+		typ, data, err := conn._ws_conn.ReadMessage()
 		if err != nil {
 			loop_end = true
 			return err
@@ -127,11 +174,22 @@ func (obj *LunaSockets) _wrappWS(conn *websocket.Conn) error {
 				continue
 			}
 
+			// Es wird der Log angezeigt dass ein RPC Request empfangen wurde
+			log.Printf("rpc-request %s recived\n", complete_package.Id)
+
 			// Die Daten werden an die RPC Handle Funktion übergeben
-			go func(xconn *websocket.Conn) {
+			go func(xconn *LunaSocketSession) {
+				// Die Aktuelle Zeit wird erfasst
+				start_time := time.Now().Unix()
+
+				// Das RPC Handle wird ausgeführt
 				if err := obj._handleRPC(conn, complete_package.Id, readed_rpc_req); err != nil {
-					fmt.Println(err)
+					log.Fatalln("rpc-request '%s' connection error: " + err.Error())
 				}
+
+				// Es wird ausgerechnet wielange dieser Vorgang gedauert hat
+				total_time := time.Now().Unix() - start_time
+				log.Printf("rpc-request '%s' response finally send in %d seconds\n", complete_package.Id, total_time)
 			}(conn)
 		case "rpc_response":
 			// Es wird geprüft ob es eine Sitzung mit dieser Id gibt
@@ -152,6 +210,9 @@ func (obj *LunaSockets) _wrappWS(conn *websocket.Conn) error {
 				continue
 			}
 
+			// Es wird der Log angezeigt dass ein RPC Response empfangen wurde
+			log.Printf("rpc-response recived %s\n", complete_package.Id)
+
 			// Das Paket wird eingelesen
 			var readed_response RpcResponse
 			if err := json.Unmarshal([]byte(complete_package.Body), &readed_response); err != nil {
@@ -163,17 +224,11 @@ func (obj *LunaSockets) _wrappWS(conn *websocket.Conn) error {
 			// Die ID wird wieder entfernt
 			delete(obj._rpc_sessions, msg.Id)
 
+			// Der Threadlock wird freigegeben
+			obj._mu.Unlock()
+
 			// Die Funktion wird in einem eigenen Thread aufgerufen
 			go resolved(readed_response)
-			obj._mu.Unlock()
-		case "stream_request":
-			continue
-		case "stream_response":
-			continue
-		case "stream_data_request":
-			continue
-		case "stream_data_response":
-			continue
 		case "ping":
 			// Das Paket wird neu eingelesen
 			var complete_package IoFlowPackage
@@ -181,6 +236,9 @@ func (obj *LunaSockets) _wrappWS(conn *websocket.Conn) error {
 			if err != nil {
 				fmt.Println(err)
 			}
+
+			// Es wird der Log angezeigt dass ein RPC Response empfangen wurde
+			log.Printf("ping %s recived\n", complete_package.Id)
 
 			// Der Ping Handler wird ausgeführt
 			go obj._handlePING(conn, complete_package.Id, complete_package.Body)
@@ -205,12 +263,17 @@ func (obj *LunaSockets) _wrappWS(conn *websocket.Conn) error {
 				continue
 			}
 
+			// Es wird der Log angezeigt dass ein Pong empfangen wurde
+			log.Printf("pong %s recived\n", complete_package.Id)
+
 			// Die ID wird wieder entfernt
 			delete(obj._rpc_sessions, msg.Id)
 
+			// Der Threadlock wird freigegeben
+			obj._mu.Unlock()
+
 			// Die Funktion wird in einem eigenen Thread aufgerufen
 			go resolved()
-			obj._mu.Unlock()
 		default:
 			fmt.Println("CORRUPT_CONNECTION")
 		}

@@ -11,12 +11,11 @@ import (
 )
 
 type LunaSockets struct {
-	_stream_sessions map[string]LunaPingResponseFunction
-	_ping_sessions   map[string]LunaPingResponseFunction
-	_rpc_sessions    map[string]LunaRpcResponseFunction
-	_services        LunaServicesMapList
-	_upgrader        *websocket.Upgrader
-	_mu              sync.Mutex
+	_ping_sessions map[string]LunaPingResponseFunction
+	_rpc_sessions  map[string]LunaRpcResponseFunction
+	_services      LunaServicesMapList
+	_upgrader      *websocket.Upgrader
+	_mu            sync.Mutex
 }
 
 // Registriert ein neues Service Objekt
@@ -50,7 +49,7 @@ func (obj *LunaSockets) UpgradeHTTPToLunaWebSocket(w http.ResponseWriter, r *htt
 	}
 
 	// Das Session Objekt wird erzeugt
-	session_pbj := LunaSocketSession{_master: obj, _ws_conn: ws, _connected: true}
+	session_pbj := LunaSocketSession{_master: obj, _ws_conn: ws, _connected: true, _header: &r.Header}
 
 	// Das Serverseitige Sitzungsobjekt wird erzeugt
 	server_obj := LunaServerSession{Session: session_pbj, _mother: obj}
@@ -60,19 +59,20 @@ func (obj *LunaSockets) UpgradeHTTPToLunaWebSocket(w http.ResponseWriter, r *htt
 }
 
 // Diese Funktion wird auf der Clientseite verwendet
-func (obj *LunaSockets) ServeWrappWS(conn *websocket.Conn) (LunaSocketSession, error) {
-	// Der WS_Connection Wrapper wird gestartet
-	go func() {
-		if err := obj._wrappWS(conn); err != nil {
-			fmt.Println(err)
-		}
-	}()
-
+func (obj *LunaSockets) ClientServeWrappWS(conn *websocket.Conn, header *http.Header) (LunaSocketSession, error) {
 	// Das Sitzungsobjekt wird erzeugt
 	session_pbj := new(LunaSocketSession)
 	session_pbj._master = obj
 	session_pbj._ws_conn = conn
 	session_pbj._connected = true
+	session_pbj._header = header
+
+	// Der WS_Connection Wrapper wird gestartet
+	go func() {
+		if err := obj._wrappWS(session_pbj); err != nil {
+			fmt.Println(err)
+		}
+	}()
 
 	// Die Daten werden zurückgegeben
 	return *session_pbj, nil
@@ -109,7 +109,6 @@ func NewLunaSocket() *LunaSockets {
 	new_obj._services = make(LunaServicesMapList)
 	new_obj._rpc_sessions = make(map[string]LunaRpcResponseFunction)
 	new_obj._ping_sessions = make(map[string]LunaPingResponseFunction)
-	new_obj._stream_sessions = make(map[string]LunaPingResponseFunction)
 	new_obj._upgrader = &websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024}
 	return new_obj
 }

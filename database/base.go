@@ -351,6 +351,24 @@ CREATE TABLE "user_group_permissions" (
 );
 `
 
+// Erstellt die Tabelle für die Directory API User Live Sessions
+var sqlite_directory_api_user_live_sessions_start_table = `
+CREATE TABLE directory_services_api_user_live_session_start (
+	dsass INTEGER PRIMARY KEY AUTOINCREMENT,
+	dsauid INTEGER,
+	user_agent TEXT,
+	host TEXT,
+	accept TEXT,
+	encodings TEXT,
+	connection TEXT,
+	content_length INTEGER,
+	content_type TEXT,
+	source_ip INTEGER,
+	source_port INTEGER,
+	created_at DATETIME
+)
+`
+
 // Stellt das Datenbank Objekt dar
 type Database struct {
 	privKey *string
@@ -380,7 +398,7 @@ func CreateNewSQLiteBasedDatabase(file_path string, local_priv_key *string) (*Da
 	directory_service_api_user_permissions, requests, user_groups_directory_services_accesses := false, false, false
 	user_groups_directory_service_api_user_premissions, user_sessions, request_closers := false, false, false
 	user_session_starting_request, user_directory_service_filter, user_permissions := false, false, false
-	user_group_permissions := false
+	user_group_permissions, directory_services_api_user_live_session_start := false, false
 	for response.Next() {
 		// Der Name wird geprüft
 		err = response.Scan(&name)
@@ -431,12 +449,23 @@ func CreateNewSQLiteBasedDatabase(file_path string, local_priv_key *string) (*Da
 			user_permissions = true
 		} else if name == "user_group_permissions" {
 			user_group_permissions = true
+		} else if name == "directory_services_api_user_live_session_start" {
+			directory_services_api_user_live_session_start = true
 		}
 	}
 
 	// Es wird versucht den Aktuellen Cursor zu schließen
 	if db_err := response.Close(); db_err != nil {
 		return nil, fmt.Errorf("CreateNewSQLiteBasedDatabase: " + db_err.Error())
+	}
+
+	// Sollte keine Directory API User Live Sessions Tabelle vorhanden sein, wird diese Hinzugefügt
+	if !directory_services_api_user_live_session_start {
+		_, err = db.Exec(sqlite_directory_api_user_live_sessions_start_table)
+		if err != nil {
+			return nil, fmt.Errorf("CreateNewSQLiteBasedDatabase: " + err.Error())
+		}
+		fmt.Println("Directory API User Live Sessions table created")
 	}
 
 	// Sollte keine User Groups Permissions Tabelle vorhanden sein, wird diese hinzugefügt
