@@ -166,6 +166,23 @@ func CloseSessionRequest(t *db.Database, request_session *base.RequestMetaDataSe
 	fmt.Println("Request closed")
 }
 
+// Wird verwendet um eine LunaRPCWebsocket Sitzung aus einer HTTP Sitzung zu erstellen
+func ServeUpgrageToLunaRPCWebsocket(hyper_rpc_server *lunasockets.LunaSockets, database *db.Database, w http.ResponseWriter, r *http.Request) {
+	// Die Verbindung wird zu einer Luna Websocket Sitzung geupgradet
+	server_sess, err := hyper_rpc_server.UpgradeHTTPToLunaWebSocket(w, r)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	// Diese Funktion wird als Thread ausgeführt, sie wird für das Pining verwendet
+
+	// Die Verbindung wird Served
+	if err := server_sess.Serve(); err != nil {
+		fmt.Println(err)
+	}
+}
+
 // Erstellt einen neuen RPC Server
 func CreateNewRPCServer(database *db.Database, rpc_port uint, fqdn *string, ssl_cert *string, ssl_priv_key *string, root_cas *x509.CertPool) (*RestAPIServer, error) {
 	// Der RPC JSON Server wird erstellt
@@ -185,12 +202,12 @@ func CreateNewRPCServer(database *db.Database, rpc_port uint, fqdn *string, ssl_
 
 	// Der LunaSockets Socket wird erstellt
 	hyper_rpc_server := lunasockets.NewLunaSocket()
-	/*if err := hyper_rpc_server.RegisterService(&Session{Database: database}); err != nil {
-		return nil, fmt.Errorf("CreateNewRPCServer: " + err.Error())
-	}*/
 	if err := hyper_rpc_server.RegisterService(&User{Database: database}); err != nil {
 		return nil, fmt.Errorf("CreateNewRPCServer: " + err.Error())
 	}
+	/*if err := hyper_rpc_server.RegisterService(&Session{Database: database}); err != nil {
+		return nil, fmt.Errorf("CreateNewRPCServer: " + err.Error())
+	}*/
 	/*if err := hyper_rpc_server.RegisterService(&RPC{}); err != nil {
 		return nil, fmt.Errorf("CreateNewRPCServer: " + err.Error())
 	}*/
@@ -211,19 +228,8 @@ func CreateNewRPCServer(database *db.Database, rpc_port uint, fqdn *string, ssl_
 
 	// Der WS Endpunkt wird registriert
 	router.HandleFunc("/wsrpc", func(w http.ResponseWriter, r *http.Request) {
-		// Die Verbindung wird zu einer Luna Websocket Sitzung geupgradet
-		server_sess, err := hyper_rpc_server.UpgradeHTTPToLunaWebSocket(w, r)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-
-		// Diese Funktion wird als Thread ausgeführt, sie wird für das Pining verwendet
-
-		// Die Verbindung wird Served
-		if err := server_sess.Serve(); err != nil {
-			fmt.Println(err)
-		}
+		// Die Verbindung wird zu einer Luna RPC Websocket verbindung geupgraded
+		ServeUpgrageToLunaRPCWebsocket(hyper_rpc_server, database, w, r)
 	})
 
 	// Das Rückgabeobjekt wird erzeugt

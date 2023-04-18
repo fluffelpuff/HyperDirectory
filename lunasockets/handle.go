@@ -10,20 +10,33 @@ import (
 
 // Diese Funktion wird ausgeführt wenn es sich um ein RPC Request handelt
 func (obj *LunaSockets) _handleRPC(conn *websocket.Conn, id string, rpc_data RpcRequest) error {
-	// Das Codec für den Request wird vorbereitet
-	req := &RpcRequestCodec{data: rpc_data, closed: false}
-	if err := obj._json_rpc_server.ServeRequest(req); err != nil {
-		fmt.Println("DD:", err)
+	// Es wird geprüt ob es sich um einen Zuläsigen Methoden Namen handelt
+	if !validateFunctionCall(rpc_data.Method) {
+		return fmt.Errorf("invalid function call")
 	}
 
-	// Die Antwort wird ausgelesen
-	resolv, err := req.GetResponse()
+	// Es wird geprüft ob es sich um eine bekannte Service Funktion handelt
+	ok, service := obj.isValidateServiceFunctionAndGetServiceObject(rpc_data.Method)
+	if !ok {
+		return fmt.Errorf("unkown function or service")
+	}
+
+	// Der Name wird vorbereitet
+	prep_name := getFunctionNameOfCall(rpc_data.Method)
+
+	// Es wird geprüft ob die Variable nicht leer ist
+	if len(prep_name) < 2 {
+		return fmt.Errorf("invalid function call")
+	}
+
+	// Die Funktion wird aufgerufen
+	result, err := callServiceFunction(&Request{}, service, prep_name, rpc_data.Params)
 	if err != nil {
 		return err
 	}
 
 	// Die Antwort wird zurückgesendet
-	response := RpcResponse{Result: resolv, Error: nil}
+	response := RpcResponse{Result: result, Error: nil}
 
 	// Die Daten werden mit JSON codiert
 	un, err := json.Marshal(response)

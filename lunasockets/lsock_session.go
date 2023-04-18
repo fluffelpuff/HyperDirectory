@@ -11,8 +11,9 @@ import (
 )
 
 type LunaSocketSession struct {
-	_master  *LunaSockets
-	_ws_conn *websocket.Conn
+	_connected bool
+	_master    *LunaSockets
+	_ws_conn   *websocket.Conn
 }
 
 // Wird verwendet um einen befehl innerhalb einer RPC Sitzung auszuführen
@@ -105,4 +106,9 @@ func (obj *LunaSocketSession) SendPing() (uint64, error) {
 
 	// Die Zeit die dieser Ping benötigt hat, wird ermittelt
 	return resolved_total, nil
+}
+
+// Gibt an ob die Verbindung besteht
+func (obj *LunaServerSession) IsConnected() bool {
+	return false
 }

@@ -3,12 +3,20 @@ package lunasockets
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/mitchellh/mapstructure"
 )
 
+// Verhindert das ein Panic das Programm abstürzen lässt
+func _panicHandler() {
+	if r := recover(); r != nil {
+		fmt.Println("Recovered from panic:", r)
+	}
+}
+
 // Gibt an ob es sich um eine Zulässige Service Funtion handelt
-func ValidateFunction(method reflect.Value) bool {
+func validateFunction(method reflect.Value) bool {
 	numIn := method.Type().NumIn()
 	if numIn != 2 {
 		return false
@@ -34,7 +42,7 @@ func ValidateFunction(method reflect.Value) bool {
 }
 
 // Ruft eine Spizielle Service Funktion auf
-func CallServiceFunction(request *Request, service interface{}, methode_name string, args []interface{}) (*interface{}, error) {
+func callServiceFunction(request *Request, service interface{}, methode_name string, args []interface{}) (*interface{}, error) {
 	// Definieren Sie den Methodennamen und die Argumente als Slice von reflect.Value
 	reflectArgs := make([]reflect.Value, 0)
 
@@ -61,11 +69,11 @@ func CallServiceFunction(request *Request, service interface{}, methode_name str
 
 	// Überprüfen Sie, ob die Methode gefunden wurde
 	if !method.IsValid() {
-		return nil, fmt.Errorf(fmt.Sprintf("MethodError: '%s' Methode wurde nicht gefunden\n", methode_name))
+		return nil, fmt.Errorf(fmt.Sprintf("MethodError: '%s' not found", methode_name))
 	}
 
 	// Es wird geprüft ob die Funktion zulässig ist und die benötigten Datentypen besitzt
-	if !ValidateFunction(method) {
+	if !validateFunction(method) {
 		return nil, fmt.Errorf("unknown method")
 	}
 
@@ -90,6 +98,8 @@ func CallServiceFunction(request *Request, service interface{}, methode_name str
 		} else if m, ok := v.(map[string]interface{}); ok {
 			// Der Datentyp wird ermittelt
 			dest := reflect.New(method.Type().In(i + 1).Elem()).Interface()
+
+			// Die Daten werden Dekodiert
 			err := mapstructure.Decode(m, &dest)
 			if err != nil {
 				return nil, err
@@ -115,14 +125,19 @@ func CallServiceFunction(request *Request, service interface{}, methode_name str
 		}
 	}
 
-	// Rufen Sie die Methode auf und übergeben Sie die Argumente
+	// Speichert das Ergebniss ab
 	var result []reflect.Value
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Println("Recovered from panic:", r)
-		}
-	}()
+
+	// Diese Funktion verhindet den Absturz des Programmes
+	defer _panicHandler()
+
+	// Ruft die eigenliche Funktion auf
 	result = method.Call(reflectArgs)
+
+	// Es wird geprüft ob sich mindestens 2 Einträge in den Results befinden
+	if len(result) != 2 {
+		return nil, fmt.Errorf(fmt.Sprintf("internal error by run function: %s", methode_name))
+	}
 
 	// Es wird geprüft ob ein Fehler aufgetreten ist
 	if err, ok := result[1].Interface().(error); ok {
@@ -134,4 +149,63 @@ func CallServiceFunction(request *Request, service interface{}, methode_name str
 
 	// Die Daten werden zurückgegeben
 	return &reutn_value, nil
+}
+
+// Wird verwendet um zu ermitteln ob es sich um einen zulässigen Funktionsaufruf handelt, wenn ja wird der Dienstname sowie der Funktionsname zurückgegen
+func validateFunctionCall(value string) bool {
+	if len(value) < 2 {
+		return false
+	}
+
+	splited := strings.Split(value, ".")
+	return len(splited) == 2
+}
+
+// Wird verwendet um zu ermitteln ob es sich bei einem Object um ein zulässigen Dienst handelt
+func validateServiceObject(obj interface{}) bool {
+	objectValue := reflect.ValueOf(obj)
+	objectType := objectValue.Type()
+
+	total := 0
+	for i := 0; i < objectType.NumMethod(); i++ {
+		if validateFunction(objectValue.Method(i)) {
+			total++
+			continue
+		}
+	}
+
+	return total > 0
+}
+
+// Wird verwendet um den Typen der Variable zu ermitteln
+func getObjectTypeName(obj interface{}) string {
+	t := reflect.TypeOf(obj)
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	return t.Name()
+}
+
+// Gibt an ob die ein Dienst eine Gewisse Funktion hat
+func hasServiceAFunction(fname string, service interface{}) bool {
+	val := reflect.ValueOf(service)
+	typ := val.Type()
+
+	for i := 0; i < val.NumMethod(); i++ {
+		methodName := typ.Method(i).Name
+		if methodName == fname {
+			return true
+		}
+	}
+
+	return true
+}
+
+// Splitet den Namen ung gibt nur den Funktionsnamen zurück
+func getFunctionNameOfCall(fname string) string {
+	if !validateFunctionCall(fname) {
+		return ""
+	}
+	splited := strings.Split(fname, ".")
+	return splited[1]
 }

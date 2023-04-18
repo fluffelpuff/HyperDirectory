@@ -74,7 +74,7 @@ func CreateNewRPCClient(url_str string) (*RpcClient, error) {
 
 	// Der HWS Client wird erzeugt
 	hws := lunasockets.NewLunaSocket()
-	sess, err := hws.WrappWS(conn)
+	sess, err := hws.ServeWrappWS(conn)
 	if err != nil {
 		fmt.Println(err)
 	}
