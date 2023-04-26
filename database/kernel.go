@@ -7,9 +7,8 @@ import (
 	"github.com/fluffelpuff/HyperDirectory/base"
 )
 
-/*
-Wird verwendet um einen Offenen Session Request in der Datenbank zu schlißen
-*/
+// DEPRECATED: This function is deprecated and should not be used.
+// CloseEntryRequestProcess should be used instead.
 func (obj *Database) CloseEntrySessionRequest(request_session *base.RequestMetaDataSession, warning *string, errort error) error {
 	// Es wird geprüft ob das Datenbank Objekt verfügbar ist
 	if obj.db == nil {

@@ -35,6 +35,11 @@ var SQLITE_WRITE_NEW_SESSION_DATA = `
 INSERT INTO "main"."directory_services_api_user_requests" ("dsauid", "user_agent", "host", "accept", "encodings", "connection", "content_length", "content_type", "source_ip", "source_port", "function_name", "created_at", "request_id") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 `
 
+// Wird verwendet um einen Live Session Eintrag in der Datenbank zu erzeugen
+var SQLITE_WRITE_NEW_LIVE_SESSION_DATA = `
+INSERT INTO directory_services_api_user_live_session_start ("dsauid", "user_agent", "host", "accept", "encodings", "connection", "content_length", "content_type", "source_ip", "source_port", "created_at") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+`
+
 // Dieser befehl wird verwendet um eine E-Mail Adresse hinzuzufügen
 var SQLITE_WRITE_EMAIL_ADDRESS = `
 INSERT INTO "main"."email_addresses" ("uid", "email_address", "email_match_hash", "active", "created_at", "created_by_service_id_user", "created_by_request_id", "created_by_user_id") VALUES (?, ?, ?, ?, ?, ?, ?, ?);

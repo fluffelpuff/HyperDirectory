@@ -80,4 +80,15 @@ type UserLoginProcessStartResponse struct {
 }
 
 type LiveRPCSession struct {
+	CertFingerprint string
+	DbSessionId     int64
 }
+
+type LiveRPCSessionProcess struct {
+	DbSessionId    int64
+	StartTimestamp uint64
+	EndTimestamp   uint64
+	Session        *LiveRPCSession
+}
+
+type RPCEventFunction func() (bool, error)

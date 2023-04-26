@@ -13,7 +13,7 @@ import (
 
 	"github.com/fluffelpuff/HyperDirectory/base"
 	db "github.com/fluffelpuff/HyperDirectory/database"
-	"github.com/fluffelpuff/HyperDirectory/lunasockets"
+	lunasockets "github.com/fluffelpuff/LunaSockets"
 
 	"github.com/divan/gorilla-xmlrpc/xml"
 	"github.com/gorilla/mux"
@@ -38,7 +38,7 @@ type Response struct {
 	Error  interface{} `json:"error"`
 }
 
-// Stellt das basis Struct für den RPC dar
+// DEPRECATED: This function is deprecated and should not be used.
 type RPC struct{}
 
 // Gibt an ob der RPC Server ausgeführt wird
@@ -46,109 +46,29 @@ func (t *RestAPIServer) IsRunning() bool {
 	return t.isRunning
 }
 
-// Wird von Server verwendet um ein Hello abzuholen
-func (h *RPC) Hello(r *http.Request, args *string, reply *string) error {
-	*reply = "hello"
-	return nil
-}
-
-// Diese Funktion ließt die Header Proxy Daten ein
-func readProxyHeaderData(origbasedata string) (*base.RequestMetaData, error) {
-	return nil, nil
-}
-
-// Wird verwendet um die Logindaten des Services Users zu prüfen
-func ValidateServiceAPIUser(t *db.Database, r *http.Request, function_name string, smeta_data base.RequestMetaDataSession) (bool, bool, *base.DirectoryServiceProcess, error) {
-	// Es wird geprüft ob die Zertifikate vorhanden
-	if len(r.TLS.PeerCertificates) == 0 {
-		return false, false, nil, fmt.Errorf("ValidateServiceAPIUser: no cert")
+// Wird verwendet um zu überprüfen ob der Directory Service User berechtig ist einen VOrgang durchzuführen,
+// wenn ja wird ein Request Eintrag in der Datenbank erstellt und eine Live Request Session Process Objekt zurückgegeben
+func VDSPAG_DB_ENTRY(t *db.Database, r *lunasockets.Request, function_name string) (*base.LiveRPCSessionProcess, error) {
+	// Es wird geprüft ob die RPC Sitzungsdaten vorhanden sind
+	if len(r.OutPassedArgs) < 1 {
+		return nil, fmt.Errorf("internal error, no live session 1")
 	}
 
-	// Extrahieren Sie den Fingerprint des Serverzertifikats
-	fingerprint := sha256.Sum256(r.TLS.PeerCertificates[0].Raw)
-	hex_fingerprint := hex.EncodeToString(fingerprint[:])
-
-	// Die Metadaten der Verbindung werden ermittelt
-	connection, clen, content_type := r.Header.Get("Connection"), r.Header.Get("Content-Length"), r.Header.Get("Content-Type")
-	user_agent, host, accept, encodings := r.Header.Get("User-Agent"), r.Header.Get("Host"), r.Header.Get("Accept"), r.Header.Get("Accept-Encoding")
-
-	// Die IP-Adresse der Anfragendenseite wird ermittelt
-	ip, port, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return false, false, nil, fmt.Errorf("ValidateServiceAPIUser: invalid source ip data")
-	}
-	netIP := net.ParseIP(ip)
-	if netIP == nil {
-		return false, false, nil, fmt.Errorf("ValidateServiceAPIUser: invalid source ip data")
+	// Es wird geprüft ob es sich um eine LiveRPCSitzung handelt
+	lrpcs, ok := r.OutPassedArgs[0].(*base.LiveRPCSession)
+	if !ok {
+		return nil, fmt.Errorf("internal error, no live session 2")
 	}
 
-	// Es wird eine Anfrage an die Datenbank gestellt um zu überprüfen ob der Benutzer exestiert und berechtigt ist für diese Aktion
-	accepted, result, err := t.ValidateDirectoryAPIUserAndGetProcessId(hex_fingerprint, user_agent, host, accept, encodings, connection, clen, content_type, ip, port, function_name, smeta_data)
-	if err != nil {
-		return false, false, nil, fmt.Errorf("ValidateServiceAPIUser: " + err.Error())
-	}
-
-	// Es wird geprüft ob die Daten Akzeptiert wurden
-	if !accepted {
-		return false, false, nil, nil
-	}
-
-	// Es wird geprüft ob der Benutzer für die Aktuelle Funktion berechtigt ist
-	if !result.IsAllowedFunction(function_name) {
-		return true, false, result, nil
-	}
-
-	// Der Vorgang wurde erfolgreich durchgeführt
-	return true, true, result, nil
-}
-
-// Erstellt ein neues Metadaten Objekt und schreibt dieses in eine Datenbank
-func CreateNewHTTPSessionRequestEntryAndGet(t *db.Database, r *http.Request, function_name string) (*base.RequestMetaDataSession, error) {
-	// Es wird geprüft ob ein Proxy Eintrag vorhanden ist
-	proxy_data := r.Header.Get("Origin-Request-Proxy-Data")
-	if len(proxy_data) > 0 {
-		// Es versucht die Daten zu dekodieren
-		decoded, err := readProxyHeaderData(proxy_data)
-		if err != nil {
-			return nil, fmt.Errorf("GetMetadataWithDbEnty: " + err.Error())
-		}
-
-		// Der Eintrag wird in der Datenbank erstellt
-		result, err := t.OpenNewEntrySessionRequet(decoded, function_name, true)
-		if err != nil {
-			return nil, err
-		}
-
-		// Die Resultdaten werden zurückgegeben
-		return result, nil
-	}
-
-	// Die IP-Adresse der Anfragendenseite wird ermittelt
-	ip, port, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return nil, fmt.Errorf("GetMetadataWithDbEnty: invalid source ip data")
-	}
-	netIP := net.ParseIP(ip)
-	if netIP == nil {
-		return nil, fmt.Errorf("GetMetadataWithDbEnty: invalid source ip data")
-	}
-
-	// Das Request Objekt wird erzeugt
-	req_obj := base.RequestMetaData{
-		SourcePort:    port,
-		SourceIp:      ip,
-		Connection:    r.Header.Get("Connection"),
-		ContentLength: r.Header.Get("Content-Length"),
-		ContentType:   r.Header.Get("Content-Type"),
-		Encodings:     r.Header.Get("Accept-Encoding"),
-		UserAgent:     r.Header.Get("User-Agent"),
-		Domain:        r.Header.Get("Host"),
-	}
-
-	// Der Eintrag wird in der Datenbank erstellt
-	result, err := t.OpenNewEntrySessionRequet(&req_obj, function_name, false)
+	// Es wird ein neuer Request Eintrag in der Datenabnk erzeugt
+	ok, result, err := t.ValidateDirectoryServiceUserPremissionAndStartProcess(lrpcs, r.Header, function_name, r.ProxyPass)
 	if err != nil {
 		return nil, err
+	}
+
+	// Sollte der Benutzer nicht berechtigt sein, wird der Vorgang abgebrochen
+	if !ok {
+		return nil, fmt.Errorf("user hasn't premission")
 	}
 
 	// Das Resuldat wird zurückgegeben
@@ -164,6 +84,16 @@ func CloseSessionRequest(t *db.Database, request_session *base.RequestMetaDataSe
 	}
 
 	fmt.Println("Request closed")
+}
+
+// Wird verwendet bevor eine Funktion aufgerufen wird
+func _bevorMethodeCallEvent(db *db.Database, cert_fingerprint string) (bool, error) {
+	return false, nil
+}
+
+// Wird aufgerufen nachdem eine Funtkion aufgerufen wurde
+func _afterMethodeCallEvent(db *db.Database, cert_fingerprint string) (bool, error) {
+	return false, nil
 }
 
 // Wird verwendet um eine LunaRPCWebsocket Sitzung aus einer HTTP Sitzung zu erstellen
@@ -195,7 +125,7 @@ func ServeUpgrageToLunaRPCWebsocket(hyper_rpc_server *lunasockets.LunaSockets, d
 	}
 
 	// Es wird eine Anfrage an die Datenbank gestellt um die Live Sitzung zu erstellen
-	auth, session, err := db.ValidateDirectoryAPIUserAndGetLiveSession(hex_fingerprint, user_agent, host, accept, encodings, connection, clen, content_type, ip, port)
+	auth, session, err := db.ValidateDirectoryAPIUserAndGetLiveSession(hex_fingerprint, user_agent, host, accept, encodings, connection, clen, content_type, ip, port, nil)
 	if err != nil {
 		log.Fatalln("internal error:" + err.Error())
 		return
@@ -215,15 +145,30 @@ func ServeUpgrageToLunaRPCWebsocket(hyper_rpc_server *lunasockets.LunaSockets, d
 	}
 
 	// Die Sitzung wird zwischengspeichert
-	server_sess.Session.AddOutParameter(session)
+	server_sess.AddOutParameter(session)
 
 	// Der Log text wird angezeigt
 	log.Printf("new websocket connection accepted from %s\n", hex_fingerprint)
 
 	// Die Verbindung wird Served
 	if err := server_sess.Serve(); err != nil {
-		fmt.Println(err)
+		if err := db.CloseDirectoryAPIUserLiveSession(session, err, nil); err != nil {
+			log.Printf("Websocket connection closed %s with error %s\n", hex_fingerprint, err.Error())
+			return
+		} else {
+			log.Printf("Websocket connection closed %s\n", hex_fingerprint)
+			return
+		}
 	}
+
+	// Die Aktuelle Sitzung wird in der Datenbank geschlossen
+	if err := db.CloseDirectoryAPIUserLiveSession(session, nil, nil); err != nil {
+		log.Printf("Websocket connection closed %s with error %s\n", hex_fingerprint, err.Error())
+		return
+	}
+
+	// Der Log text wird angezeigt
+	log.Printf("Websocket connection closed %s\n", hex_fingerprint)
 }
 
 // Erstellt einen neuen RPC Server
@@ -233,15 +178,11 @@ func CreateNewRPCServer(database *db.Database, rpc_port uint, fqdn *string, ssl_
 	json_rpc_server.RegisterCodec(json.NewCodec(), "application/json")
 	json_rpc_server.RegisterCodec(json.NewCodec(), "application/json;charset=UTF-8")
 	json_rpc_server.RegisterService(&Session{Database: database}, "")
-	json_rpc_server.RegisterService(&User{Database: database}, "")
-	json_rpc_server.RegisterService(&RPC{}, "")
 
 	// Der RPC XML Server wird erstellt
 	xml_rpc_server := rpc.NewServer()
 	xml_rpc_server.RegisterCodec(xml.NewCodec(), "application/xml")
 	xml_rpc_server.RegisterService(&Session{Database: database}, "")
-	xml_rpc_server.RegisterService(&User{Database: database}, "")
-	xml_rpc_server.RegisterService(&RPC{}, "")
 
 	// Der LunaSockets Socket wird erstellt
 	hyper_rpc_server := lunasockets.NewLunaSocket()

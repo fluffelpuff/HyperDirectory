@@ -7,7 +7,7 @@ import (
 	"github.com/fluffelpuff/HyperDirectory/base"
 	hdcrypto "github.com/fluffelpuff/HyperDirectory/crypto"
 	db "github.com/fluffelpuff/HyperDirectory/database"
-	hws "github.com/fluffelpuff/HyperDirectory/lunasockets"
+	lunasockets "github.com/fluffelpuff/LunaSockets"
 
 	"github.com/gorilla/rpc/v2/json2"
 )
@@ -374,96 +374,26 @@ func _CreateNewEMailBasedUserNoneRoot(db *db.Database, directory_service_user_io
 	return response_data, nil, nil
 }
 
-func (t *User) CreateNewEMailBasedUserNoneRoot(r *http.Request, args *base.CreateNewUserNoneRoot, result *base.UserCreateResponse) error {
-	// Speichert den Namen der Aktuellen Funktion ab und erstellt eine Sitzung in der Datenbank
-	function_name_var := "@create_new_user_none_root"
+func (t *User) CreateNewEMailBasedUserNoneRoot(req *lunasockets.Request, args *base.CreateNewUserNoneRoot) (*base.UserCreateResponse, error) {
+	// Es wird geprüft ob die RPC Sitzungsdaten vorhanden sind
+	if len(req.OutPassedArgs) < 1 {
+		return nil, fmt.Errorf("internal error, no live session 1")
+	}
 
-	// Die Request Metadaten werden zusammengefasst, in die Datenbank geschrieben und abgerufen
-	source_meta_data, err := CreateNewHTTPSessionRequestEntryAndGet(t.Database, r, function_name_var)
+	// Es wird gerpüft ob der API User berechtigt ist einen neuen Benutezr zu erstellen, wenn ja wird ein Reqest erstellt
+	source_meta_data, err := VDSPAG_DB_ENTRY(t.Database, req, "@create_new_user_none_root")
 	if err != nil {
-		return &json2.Error{
+		return nil, &json2.Error{
 			Code:    500,
 			Message: "Internal error",
 		}
 	}
 
-	// Es wird geprüft ob das Request Objekt korrekt ist
-	if !args.PreValidate() {
-		// Die Sitzung wird wieder geschlossen
-		CloseSessionRequest(t.Database, source_meta_data, nil, fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 4: Bad request"))
+	fmt.Println(source_meta_data)
 
-		// Es wird ein fehler zurückgegeben
-		return &json2.Error{
-			Code:    400,
-			Message: "Bad Request",
-		}
-	}
-
-	// Die Aktuellen Dienstdaten werden geprüft
-	is_acccepted, user_authorized_function, directory_service_user_io, err := ValidateServiceAPIUser(t.Database, r, function_name_var, *source_meta_data)
-	if err != nil {
-		// Die Sitzung wird wieder geschlossen
-		CloseSessionRequest(t.Database, source_meta_data, nil, fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 1: "+err.Error()))
-
-		// Es wird ein fehler zurückgegeben
-		return &json2.Error{
-			Code:    500,
-			Message: "Invalid request, aborted",
-		}
-	}
-
-	// Sollten die API Daten nicht Akzeptiert werden, wird der Vorgang abgebrochen
-	if !is_acccepted {
-		// Die Sitzung wird wieder geschlossen
-		CloseSessionRequest(t.Database, source_meta_data, nil, fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 2: user not authenticated"))
-
-		// Es wird ein fehler zurückgegeben
-		return &json2.Error{
-			Code:    401,
-			Message: "The service could not be authenticated, unkown user",
-		}
-	}
-
-	// Sollte der Benutzer nicht berechtigt sein, diese Funktion auszuführen, wird der vorgang abgebrochen
-	if !user_authorized_function {
-		// Die Sitzung wird wieder geschlossen
-		CloseSessionRequest(t.Database, source_meta_data, nil, fmt.Errorf("CreateNewEMailBasedUserNoneRoot: 3: user not authenticated"))
-
-		// Es wird ein fehler zurückgegeben
-		return &json2.Error{
-			Code:    401,
-			Message: "The service could not be authenticated, not authorized for this function",
-		}
-	}
-
-	// Die Anfrage wird fianl durchgeführt
-	complete_result, warning, errx := _CreateNewEMailBasedUserNoneRoot(t.Database, directory_service_user_io, args, source_meta_data)
-	if errx != nil {
-		// Sollte eine Warnung vorhanden sein, wird diese übergeben
-		if warning != nil {
-			CloseSessionRequest(t.Database, source_meta_data, warning, errx.InternalError)
-			return errx.ExternalError
-		} else {
-			CloseSessionRequest(t.Database, source_meta_data, nil, errx.InternalError)
-			return errx.ExternalError
-		}
-	}
-
-	// Die Daten werden zurückgegeben
-	*result = *complete_result
+	// DIe Aktielle Sitzung wird geschlossen
+	t.Database.CloseEntryRequestProcess(source_meta_data, nil, nil)
 
 	// Die Sitzung wird wieder geschlossen
-	if warning != nil {
-		CloseSessionRequest(t.Database, source_meta_data, warning, nil)
-	} else {
-		CloseSessionRequest(t.Database, source_meta_data, nil, nil)
-	}
-
-	// Der Vorgang wurde ohne Fehler fertigestellt
-	return nil
-}
-
-func (t *User) TestFunction(req *hws.Request, tst *hws.TestStruct) (*string, error) {
-	reply := "hws.TestObject{}"
-	return &reply, nil
+	return nil, fmt.Errorf("Error")
 }

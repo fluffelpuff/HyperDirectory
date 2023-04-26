@@ -8,16 +8,13 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/fluffelpuff/HyperDirectory/lunasockets"
+	"github.com/fluffelpuff/HyperDirectory/base"
+	lunasockets "github.com/fluffelpuff/LunaSockets"
 	"github.com/gorilla/websocket"
 )
 
 // Stellt das Client Objekt dar
 type RpcClient struct {
-	_serverURL         string
-	_tlsConfig         *tls.Config
-	_clientCertKeyPair *tls.Certificate
-	_cerPool           *x509.CertPool
 }
 
 // Erstellt eine neuen RPC_CLIENT
@@ -61,11 +58,14 @@ func CreateNewRPCClient(url_str string) (*RpcClient, error) {
 	if err != nil {
 		fmt.Println(err)
 	}
+
+	// Die Daten werden übermittelt
 	params := make([]interface{}, 1)
-	for i, v := range []lunasockets.TestObject{lunasockets.TestObject{Value: "a"}} {
-		params[i] = v
-	}
-	sess.CallFunction("User.TestFunction", params)
+	params[0] = base.CreateNewUserNoneRoot{}
+	header := lunasockets.HeaderData{Host: "test"}
+	r, err := sess.CallFunctionWithHeader("User.CreateNewEMailBasedUserNoneRoot", params, header)
+	fmt.Println(r)
+	fmt.Println(err)
 	sess.SendPing()
 	fmt.Println("YOLO")
 
